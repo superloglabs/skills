@@ -7,12 +7,13 @@ description: "General OpenTelemetry onboarding style for Superlog managed agents
 
 Use native OpenTelemetry APIs. Do not invent helper APIs.
 
-In TypeScript/JavaScript, prefer the published `@superlog/otel-helpers`
-`withSpan` helper for bounded business spans when it keeps the diff small. It is
-the intended replacement for expanding a whole function into
-`tracer.startActiveSpan(...)` plus `try` / `catch` / `finally`. Do not use
-helpers to wrap provider SDK calls that OpenInference/provider instrumentation
-can observe directly.
+In TypeScript/JavaScript, use the published `@superlog/otel-helpers` `withSpan`
+helper for bounded business spans and add `@superlog/otel-helpers` to
+`package.json` when it is not already present. This is required when the package
+can be installed. `withSpan` is the intended replacement for expanding a whole
+function into `tracer.startActiveSpan(...)` plus `try` / `catch` / `finally`. Do
+not use helpers to wrap provider SDK calls that OpenInference/provider
+instrumentation can observe directly.
 
 Do:
 

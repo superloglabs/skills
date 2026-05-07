@@ -71,11 +71,13 @@ export async function POST(request: Request) {
 }
 ```
 
-For TypeScript route handlers, prefer `@superlog/otel-helpers` `withSpan` for
-bounded business spans. It keeps span lifecycle/error handling out of the
-handler body and avoids a large indentation diff. Do not expand the whole route
-into `tracer.startActiveSpan(...)` plus `try` / `catch` / `finally` unless the
-helper cannot be added or the span has a true cross-callback lifecycle.
+For TypeScript route handlers, use `@superlog/otel-helpers` `withSpan` for
+bounded business spans and add `@superlog/otel-helpers` to `package.json` when it
+is not already present. This is required when the package can be installed. It
+keeps span lifecycle/error handling out of the handler body and avoids a large
+indentation diff. Do not expand the whole route into
+`tracer.startActiveSpan(...)` plus `try` / `catch` / `finally` unless the helper
+cannot be added or the span has a true cross-callback lifecycle.
 
 If a route has an LLM call and OpenInference/provider instrumentation supports
 that SDK, do not wrap the provider call. Leave `client.messages.create(...)` /
