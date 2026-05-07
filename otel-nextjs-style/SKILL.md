@@ -87,7 +87,9 @@ instrumentation does not cover.
 
 For `@vercel/otel@1.x`, the logs option is `logRecordProcessor` (singular).
 Do not use `logRecordProcessors` unless the installed type definitions prove
-that version supports it.
+that version supports it. For normal Next.js/Vercel apps, do not guard
+`registerOTel(...)` behind `NEXT_RUNTIME`; Next calls `instrumentation.ts` in
+the appropriate runtime and `@vercel/otel` handles its own runtime differences.
 
 `console.info` is not OTLP log export. If there is no existing logger bridge,
 use `@opentelemetry/api-logs` for production log records:
@@ -118,4 +120,6 @@ OTEL_SERVICE_NAME=mugline-web
 ```
 
 Smoke checks should use tools already in the repo, e.g. `npm run typecheck` or
-`npm run build`. Do not assume `ts-node` exists unless it is already installed.
+`npm run build`, plus a real app request where practical. Do not invent fragile
+inline Node scripts that import TypeScript source files directly, and do not
+assume `ts-node` exists unless it is already installed.

@@ -61,6 +61,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh
 OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>
 ```
 
+Do not use legacy names such as `SUPERLOG_API_KEY` or `SUPERLOG_INTAKE_URL`,
+even as placeholder text in docs or comments. Use neutral placeholders such as
+`<key from dashboard>` or `SUPERLOG_TEST`.
+
 Use public equivalents only for client bundles, e.g.
 `EXPO_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT`.
 
