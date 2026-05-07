@@ -7,6 +7,13 @@ description: "General OpenTelemetry onboarding style for Superlog managed agents
 
 Use native OpenTelemetry APIs. Do not invent helper APIs.
 
+In TypeScript/JavaScript, prefer the published `@superlog/otel-helpers`
+`withSpan` helper for bounded business spans when it keeps the diff small. It is
+the intended replacement for expanding a whole function into
+`tracer.startActiveSpan(...)` plus `try` / `catch` / `finally`. Do not use
+helpers to wrap provider SDK calls that OpenInference/provider instrumentation
+can observe directly.
+
 Do:
 
 ```ts
@@ -14,15 +21,14 @@ const tracer = trace.getTracer("mugline.api");
 const meter = metrics.getMeter("mugline.api");
 const ordersSubmitted = meter.createCounter("orders.submitted");
 
-await tracer.startActiveSpan("order.submit", async (span) => {
+await withSpan("order.submit", async (span) => {
   span.setAttributes({
     "tenant.id": tenantId,
     "order.id": orderId,
     outcome: "success",
   });
   ordersSubmitted.add(1, { "tenant.id": tenantId, outcome: "success" });
-  span.end();
-});
+}, { tracer });
 ```
 
 Do not:
@@ -84,15 +90,31 @@ Include standard resource attributes when values are available:
 
 ## LLM Metrics
 
-If the app uses LLMs, every provider/call site needs token and cost metrics.
+If the app uses LLMs, first look for provider instrumentation that already
+captures model/provider/token/error spans. In JavaScript/TypeScript, prefer
+OpenInference packages such as
+`@arizeai/openinference-instrumentation-anthropic` for supported SDKs. Keep the
+real provider call native and readable.
+
+```ts
+const response = await client.messages.create({
+  model,
+  max_tokens: 100,
+  messages,
+});
+```
+
+Every provider/call site still needs enough telemetry to answer usage and cost
+questions. Let provider instrumentation own token spans where it supports them;
+add small explicit counters only for missing totals or pricing gaps.
 
 ```ts
 llmInputTokens.add(inputTokens, {
   "tenant.id": tenantId,
-  "llm.provider": "anthropic",
-  "llm.model": model,
-  "llm.use_case": "voice.initial_greeting",
-  "llm.call_site": "_callMugCopyLlm",
+  "gen_ai.provider.name": "anthropic",
+  "gen_ai.request.model": model,
+  "app.gen_ai.use_case": "voice.initial_greeting",
+  "app.gen_ai.call_site": "_callMugCopyLlm",
   outcome: "success",
 });
 ```
@@ -104,9 +126,16 @@ Use counters for additive totals:
 - `llm.cost_usd`
 
 Token counters use `unit="tokens"` or the SDK equivalent. Cost counters use
-`unit="USD"`.
+`unit="USD"`. If OpenInference/provider instrumentation already captures token
+usage, do not duplicate token counters just to mirror it. Add cost counters only
+when the app has a clear pricing table or helper to calculate them accurately.
 
 Use histograms for latency/duration distributions.
+
+Prefer current `gen_ai.*` semantic-convention-style attribute names for LLM
+provider/model/token attributes, plus `app.gen_ai.*` for bounded application
+dimensions such as use case and call site. Avoid inventing parallel `llm.*`
+attributes unless the repo already standardizes on them.
 
 If the app has OpenAI, Anthropic, and Google callers, instrument all three.
 
