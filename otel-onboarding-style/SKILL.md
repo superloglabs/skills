@@ -82,7 +82,32 @@ duplicate processors or log handlers. For a single-entrypoint app that starts
 cleanly, keep this simple.
 
 Include standard resource attributes when values are available:
-`service.name`, `service.version`, `deployment.environment.name`.
+`service.name`, `service.version`, `deployment.environment.name`, and the VCS
+attributes below.
+
+## VCS resource attributes
+
+Set `vcs.repository.url.full` on the OTel resource for every instrumented
+service. The value is the canonical https URL of the repo (e.g.
+`https://github.com/acme/api`) — the same URL the user would paste in a
+browser, not an SSH URL, not a local working-tree path. This is the important
+one: it lets Superlog link telemetry back to the source of truth. It is fine
+to hardcode this string alongside `service.name` in the SDK init; if a build
+env already exposes the slug (e.g. `VERCEL_GIT_REPO_OWNER` +
+`VERCEL_GIT_REPO_SLUG`, `RAILWAY_GIT_REPO_OWNER` + `RAILWAY_GIT_REPO_NAME`),
+prefer reading from env so a fork or rename doesn't drift.
+
+Also set `vcs.ref.head.revision` (the commit SHA) on a best-effort basis. Read
+it from whatever env var the runtime/build platform already injects:
+`VERCEL_GIT_COMMIT_SHA`, `RAILWAY_GIT_COMMIT_SHA`, `GITHUB_SHA`,
+`SOURCE_COMMIT`, `GIT_COMMIT`, `HEROKU_SLUG_COMMIT`, etc. Do not shell out to
+`git` from the running process — many production images do not have git or a
+working tree. If no env source is available, omit the attribute; skipping the
+SHA is fine, skipping the URL is not.
+
+Use `vcs.repository.url.full` and `vcs.ref.head.revision` exactly as named —
+these are the OTel semantic-convention keys. Do not invent parallel attributes
+like `git.repo` or `app.repo_url`.
 
 ## Signals
 
