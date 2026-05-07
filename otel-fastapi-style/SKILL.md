@@ -60,10 +60,12 @@ For OTLP-forwarded stdlib logs, configure all of these:
 
 ## LLM Calls
 
-LLM routes need token and cost counters:
+LLM routes need token coverage:
 
 - `llm.tokens.input`
 - `llm.tokens.output`
-- `llm.cost_usd`
 
-Tag them with tenant, provider, model, use case, call site, and outcome.
+Tag explicit token counters with tenant, provider, model, use case, call site,
+and outcome only when provider instrumentation cannot capture token usage.
+Do not add app-side LLM cost metrics or pricing tables; Superlog estimates cost
+centrally from provider/model/token data.

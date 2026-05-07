@@ -93,11 +93,11 @@ Counters:
 
 - `llm.tokens.input`
 - `llm.tokens.output`
-- `llm.cost_usd`
 - requests/events/jobs/errors
 
 Use semantic units when the SDK supports them: token counters use
-`unit="tokens"` and LLM cost uses `unit="USD"`.
+`unit="tokens"`. Do not add app-side `llm.cost_usd` pricing metrics for normal
+LLM calls; Superlog estimates cost centrally from provider/model/token data.
 
 Histograms:
 

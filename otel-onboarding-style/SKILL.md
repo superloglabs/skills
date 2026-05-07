@@ -109,9 +109,12 @@ const response = await client.messages.create({
 });
 ```
 
-Every provider/call site still needs enough telemetry to answer usage and cost
-questions. Let provider instrumentation own token spans where it supports them;
-add small explicit counters only for missing totals or pricing gaps.
+Every provider/call site still needs enough telemetry to answer usage questions.
+Let provider instrumentation own model/provider/token spans where it supports
+them. Do not duplicate those attributes at every application call site, and do
+not put provider pricing tables or cost math in product handlers. Superlog
+computes estimated LLM cost centrally in the UI/query layer from captured
+provider/model/token data.
 
 ```ts
 llmInputTokens.add(inputTokens, {
@@ -124,16 +127,17 @@ llmInputTokens.add(inputTokens, {
 });
 ```
 
-Use counters for additive totals:
+Use counters for additive totals only when provider instrumentation cannot
+capture token usage:
 
 - `llm.tokens.input`
 - `llm.tokens.output`
-- `llm.cost_usd`
 
-Token counters use `unit="tokens"` or the SDK equivalent. Cost counters use
-`unit="USD"`. If OpenInference/provider instrumentation already captures token
-usage, do not duplicate token counters just to mirror it. Add cost counters only
-when the app has a clear pricing table or helper to calculate them accurately.
+Token counters use `unit="tokens"` or the SDK equivalent. If
+OpenInference/provider instrumentation already captures token usage, do not
+duplicate token counters just to mirror it. Do not add `llm.cost_usd` or
+equivalent app-side cost metrics for normal LLM calls; cost belongs in Superlog's
+central pricing layer.
 
 Use histograms for latency/duration distributions.
 

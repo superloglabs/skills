@@ -23,7 +23,8 @@ normal Next/Vercel app or already has a custom provider that must be extended.
 
 For JavaScript/TypeScript LLM providers, prefer provider instrumentation over
 manual child spans. For Anthropic, add OpenInference in the same bootstrap and
-keep call sites native:
+keep call sites native. This example uses `@vercel/otel@2.x`; if the installed
+types are v1, use `logRecordProcessor` singular instead.
 
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
@@ -45,7 +46,7 @@ export function register() {
   registerOTel({
     serviceName: process.env.OTEL_SERVICE_NAME ?? "mugline-web",
     instrumentations: [anthropicInstrumentation],
-    logRecordProcessor: new BatchLogRecordProcessor(new OTLPLogExporter()),
+    logRecordProcessors: [new BatchLogRecordProcessor(new OTLPLogExporter())],
   });
 }
 ```
@@ -82,17 +83,24 @@ cannot be added or the span has a true cross-callback lifecycle.
 If a route has an LLM call and OpenInference/provider instrumentation supports
 that SDK, do not wrap the provider call. Leave `client.messages.create(...)` /
 equivalent in place and put business context on the active product span or
-structured log. Only add manual LLM token/cost metrics for gaps the provider
-instrumentation does not cover.
+structured log. Do not duplicate provider/model/token attributes in route-level
+spans, logs, or metrics when OpenInference already reports them. Do not calculate
+LLM cost in route handlers; Superlog derives estimated cost in the UI/query layer
+from OpenInference provider/model/token attributes.
+For Anthropic in Next.js/ESM, keep the instrumentation instance and
+`manuallyInstrument(Anthropic)` call at module scope so it runs once and before
+route code.
 
-For `@vercel/otel@1.x`, the logs option is `logRecordProcessor` (singular).
-Do not use `logRecordProcessors` unless the installed type definitions prove
-that version supports it. For normal Next.js/Vercel apps, do not guard
+Match the `@vercel/otel` logs option to the installed package/types:
+`@vercel/otel@1.x` uses `logRecordProcessor` singular, while
+`@vercel/otel@2.x` uses `logRecordProcessors` plural. For normal
+Next.js/Vercel apps, do not guard
 `registerOTel(...)` behind `NEXT_RUNTIME`; Next calls `instrumentation.ts` in
 the appropriate runtime and `@vercel/otel` handles its own runtime differences.
 
 `console.info` is not OTLP log export. If there is no existing logger bridge,
-use `@opentelemetry/api-logs` for production log records:
+use `@opentelemetry/api-logs` for production log records. Remove pre-existing
+`console.*` calls that duplicate the same structured OTel log event:
 
 ```ts
 logger.emit({

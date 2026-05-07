@@ -39,8 +39,11 @@ OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>
 - Traces: span around the function operation and each critical provider call.
 - Logs: concise structured OTLP log records for critical outcomes.
 - Metrics: tenant-tagged counters/histograms for critical operations.
-- LLM calls: `llm.tokens.input`, `llm.tokens.output`, `llm.cost_usd` tagged by
-  tenant, provider, model, use case, call site, and outcome.
+- LLM calls: capture `llm.tokens.input` / `llm.tokens.output` only when provider
+  instrumentation is unavailable; tag explicit token counters with tenant,
+  provider, model, use case, call site, and outcome. Do not calculate LLM cost in
+  edge function code; Superlog estimates it centrally from provider/model/token
+  data.
 
 Use `EdgeRuntime.waitUntil(...)` or the runtime's equivalent when available so
 OTLP fetches can finish after the response is returned.
