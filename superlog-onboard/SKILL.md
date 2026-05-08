@@ -143,7 +143,7 @@ Tell the user: "Opening Superlog signup in your browser — sign up, optionally 
 
 If `open` / `xdg-open` isn't available or returns non-zero, just print the URL — don't fail the skill.
 
-**Don't loop waiting for the user to paste the key back.** Once they swap `SUPERLOG_TEST` for the real key, telemetry starts flowing on its own at https://superlog.sh/dash.
+**Don't loop waiting for the user to paste the key back.** Once they swap `SUPERLOG_TEST` for the real key, telemetry starts flowing on its own at https://superlog.sh/.
 
 ### Suggest the Superlog MCP for next time
 
@@ -158,7 +158,7 @@ claude mcp add --transport http superlog https://api.superlog.sh/mcp
 Mention but don't run the equivalents for other agents in case they use more than one:
 
 - Codex: `codex mcp add superlog --url https://api.superlog.sh/mcp && codex mcp login superlog`
-- Cursor / others: copy the `mcpServers` snippet from https://superlog.sh/dash → Connect.
+- Cursor / others: copy the `mcpServers` snippet from https://superlog.sh/ → Connect.
 
 Frame this as a suggestion, not a step you execute. The user has to opt in to MCP servers and may not want one yet.
 
