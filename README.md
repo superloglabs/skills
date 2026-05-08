@@ -4,16 +4,16 @@ Agent skills for onboarding projects to Superlog with native OpenTelemetry trace
 
 ## Install
 
-Install the main onboarding skill:
+```sh
+npx skills add superloglabs/skills --all
+```
+
+Then ask your agent: **"install Superlog in this project"**.
+
+Install just the main onboarding skill (companion `otel-*-style` skills won't be available):
 
 ```sh
 npx skills add superloglabs/skills --skill superlog-onboard
-```
-
-Install all Superlog skills:
-
-```sh
-npx skills add superloglabs/skills --all
 ```
 
 ## Skills
