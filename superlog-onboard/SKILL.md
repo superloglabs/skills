@@ -18,6 +18,7 @@ Before editing, read the applicable companion skills:
 - `otel-nextjs-style` for Next.js/Vercel apps.
 - `otel-expo-style` for Expo / React Native apps.
 - `otel-supabase-edge-style` for Supabase Edge Functions.
+- `otel-go-style` for Go services.
 
 ## Step 0 — Endpoint and key handling
 

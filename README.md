@@ -26,4 +26,5 @@ npx skills add superloglabs/skills --skill superlog-onboard
 - `otel-livekit-style` - LiveKit Agents lifecycle, metrics, and LLM telemetry guidance.
 - `otel-expo-style` - Expo and React Native OpenTelemetry guidance.
 - `otel-supabase-edge-style` - Supabase Edge Function observability guidance.
+- `otel-go-style` - Go OpenTelemetry style guidance.
 
