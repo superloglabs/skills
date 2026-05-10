@@ -94,7 +94,15 @@ Wrap **every critical business operation** with an active span. Auto-instrumente
 - Naming: `domain.verb` (`order.process`, `payment.charge`, `email.send`, `agent.run`, `interview.create`, `job.<type>`).
 - Attributes: entity IDs (order.id, user.id, workspace.id, tenant.id), counts, key boolean branch outcomes, model name / provider for LLM calls.
 - Record exceptions: `span.recordException(err)` + `span.setStatus({ code: ERROR })` on failure paths.
-- For Python functions with clear boundaries, prefer `@tracer.start_as_current_span("operation.name")`. Use a context manager when a decorator does not fit. Do not use detached `start_span()` + manual `end()` for bounded work.
+- For Python functions with clear boundaries, prefer `@tracer.start_as_current_span("operation.name")` — the same call works as a decorator and as a context manager, and the decorator form is usually what you want for a whole function:
+
+  ```python
+  @tracer.start_as_current_span("do_work")
+  def do_work():
+      print("doing some work...")
+  ```
+
+  Use a context manager when a decorator does not fit (partial scope, dynamic span name, etc.). Do not use detached `start_span()` + manual `end()` for bounded work.
 - Skip trivial getters, pure transforms, internal helpers — anything with no real latency or failure mode.
 - **Never put PII in attributes** (emails, passwords, tokens, full request bodies).
 

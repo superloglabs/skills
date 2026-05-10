@@ -19,7 +19,18 @@ greetings = meter.create_counter("voice.greetings.delivered", unit="1")
 
 ## Bounded Work
 
-Prefer decorators for functions with clear boundaries.
+`tracer.start_as_current_span(...)` works as both a decorator and a context
+manager — the same call. For a whole function, the decorator form is usually
+what you want:
+
+```python
+@tracer.start_as_current_span("do_work")
+def do_work():
+    print("doing some work...")
+```
+
+It works the same way on async functions and on methods, and you can grab the
+active span inside the body with `trace.get_current_span()` to set attributes:
 
 ```python
 @tracer.start_as_current_span("voice.deliver_initial_greeting")
@@ -32,7 +43,8 @@ async def _deliver_initial_greeting(*, tenant_id: str, user_id: str) -> None:
     })
 ```
 
-Use a context manager when a decorator does not fit.
+Use a context manager when a decorator does not fit (partial scope, dynamic
+span name, etc.).
 
 ```python
 with tracer.start_as_current_span("order.validate") as span:
