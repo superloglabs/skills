@@ -25,31 +25,24 @@ The **OTLP endpoint** is always `https://intake.superlog.sh`.
 
 The **ingest API key** starts with `superlog_live_` and is project-scoped + write-only. It's a secret: **never embed it as a literal in source files.** It only ever goes into env files (`.env.local`, `.env.superlog`, the language equivalent) read at runtime.
 
-Don't block on the key up front — instrumentation is mostly the same whether the key exists yet or not. But do **elicit a choice** about how to obtain the key before you start, because two of the three paths involve a browser handoff and the user may want to time that.
+Two paths, no questions asked:
 
-Ask the user once, then proceed:
+### Key in the prompt
 
-> "I can either (a) **pair you with Superlog now** — I'll open a browser for you to sign up, and your ingest key flows back here automatically while I do the install; (b) **use a key you already have** — paste it and I'll only write it into env files, never the chat; or (c) **start with the `SUPERLOG_TEST` sentinel** and you swap it for a real key later. Which do you want?"
+If the invoking prompt or env already contains a `superlog_live_…` key, use it. Validate the prefix, write it into env files, never echo it back to the chat. Done — move on to Step 1.
 
-Default to (a) for users who clearly have no key yet (no `superlog_live_…` in their existing config, no answer to a single ask).
+### No key
 
-### (a) Pair now — device flow
+Kick off the device flow immediately, then keep working in parallel — don't block install on signup.
 
 1. `POST https://api.superlog.sh/oauth/device` with `Content-Type: application/json` and body `{"flow":"skill"}`. Response includes `device_code`, `user_code`, `verification_uri_complete` (a `https://superlog.sh/activate?code=…&flow=skill` URL), `expires_in` (seconds), `interval` (poll interval seconds).
-2. Open `verification_uri_complete` in the user's default browser (`open` / `xdg-open` / `start ""`). Print the URL too so they can copy it if the open command silently fails.
-3. **Don't block.** Keep going with Steps 1–4 of this skill. Use `SUPERLOG_TEST` in env files as a placeholder while you work — the user is signing up in the background.
-4. When you reach Step 5, poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` every `interval` seconds. `428` = `authorization_pending`, keep waiting. `200` returns `{ingest_key, project_id, user, org, flow:"skill"}`. `410` = expired (user took longer than `expires_in`); fall back to (c) and tell them to swap later.
-5. On 200, **rewrite the env files** to replace `SUPERLOG_TEST` with the real `ingest_key`. Don't print the key back to the chat (the transcript is logged; secrets stay out of it). The web `/activate` page will tell the user the agent has their key.
+2. Open `verification_uri_complete` in the user's default browser (`open` / `xdg-open` / `start ""`). Print the URL too so they can copy it if the open command silently fails. Tell the user *briefly* what's happening: signup is open in their browser, the key flows back here automatically, you're going to keep working.
+3. While the user signs up, **do not block.** Keep going with Steps 1–4. Use the literal sentinel `SUPERLOG_TEST` in env files as a placeholder — Superlog's ingest accepts it from anyone (returns 200 without forwarding anywhere), so the user's app can boot and exercise the OTel bootstrap path while signup is in flight.
+4. At Step 5, poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` every `interval` seconds. `428` = `authorization_pending`, keep waiting. `200` returns `{ingest_key, project_id, user, org, flow:"skill"}`. `410` = expired (user took longer than `expires_in`).
+5. On 200: rewrite every env file you wrote to replace `SUPERLOG_TEST` with the real `ingest_key`. Never print the key back to chat (transcripts get logged). The web `/activate` page already confirms hand-off to the user.
+6. On 410 / user closed the tab: leave `SUPERLOG_TEST` in place and tell the user to sign up at https://superlog.sh/ and swap it later.
 
-### (b) User-supplied key
-
-User pastes a `superlog_live_…` key. Validate the prefix, write it into env files, never echo it back to the chat. Skip the browser/poll dance entirely.
-
-### (c) Sentinel
-
-Use the literal sentinel `SUPERLOG_TEST` as the key. Superlog's ingest accepts it from anyone — it returns 200 to the OTLP exporter without forwarding anywhere. This lets the user's app boot, exercise the OTel bootstrap path, and emit telemetry calls end-to-end before they sign up. They swap `SUPERLOG_TEST` for a real `superlog_live_…` after signup and real telemetry starts flowing.
-
-Either way, do the install work first. Sign-up handoff finishes at the end (Step 5).
+Sign-up is **not** elicited. Deploy is — see Step 4 / Step 5 below for when to ask the user which target to deploy to.
 
 ## Step 1 — Map every app/service in the repo
 
@@ -124,27 +117,12 @@ A bootstrap that loads but never POSTs is not a partial success. Fix it before m
 
 ## Step 5 — Hand-off (final message to the user)
 
-This is the closing message. Behavior depends on which Step 0 path the user chose.
+If you started a device flow in Step 0, collect the key first. Print one line that you're waiting for sign-up to finish (so the user knows the terminal isn't frozen), then poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` at the `interval` returned earlier. Cap the wait at `expires_in` (default 600s).
 
-### (a) Pair now — wait for the key, then write it
+- On 200: rewrite every env file you wrote, replacing the `SUPERLOG_TEST` placeholder with the real `ingest_key`. Touch `.env.local`, `.env.superlog`, `.env.production`, etc. — whatever you created or edited. Never print the `ingest_key` back to chat (transcripts get logged); the web `/activate` page already confirms hand-off to the user.
+- On 410 / poll timeout: leave `SUPERLOG_TEST` in env, tell the user "sign-up didn't finish in time — sign up at https://superlog.sh/ when you're ready and swap the key." Continue with the rest of the closing message.
 
-If you started a device flow in Step 0, this is where you collect the key.
-
-Print one line that the agent is waiting for sign-up to complete (so the user knows the terminal isn't frozen), then poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` at the `interval` returned earlier. Cap the wait at the original `expires_in` (default 600s). On 200:
-
-1. Walk every env file you wrote and replace the `SUPERLOG_TEST` placeholder with the real `ingest_key`. Touch `.env.local`, `.env.superlog`, `.env.production`, etc. — whatever you created or edited.
-2. Do **not** print the `ingest_key` back to the chat. The web's `/activate` page already confirms hand-off to the user. Keys in transcripts get logged.
-3. Move on to **What changed** + **Set these env vars** + **Deploy + finish setup** below.
-
-If polling times out (user closed the tab, took too long), don't fail. Tell them: "Sign-up didn't finish in time. Your env files are still set to `SUPERLOG_TEST` — sign up at https://superlog.sh/ when you're ready and swap it for the real key." Then proceed with the rest of the closing message.
-
-### (b) User supplied a key
-
-The key is already in env. Skip straight to **What changed** + deploy guidance.
-
-### (c) Sentinel
-
-`SUPERLOG_TEST` is in env. Tell the user the install is complete and direct them to https://superlog.sh/ to sign up — their app is already emitting telemetry against the sentinel; once they swap the key, real data shows up in their dashboard.
+If the key was already supplied in the prompt, no polling needed — it's been in env from the start.
 
 ### What changed
 
@@ -155,7 +133,7 @@ The key is already in env. Skip straight to **What changed** + deploy guidance.
 Two env vars need to reach every runtime that runs the instrumented code (local dev, CI, prod):
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh`
-- `OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>` — `<key>` is the real `superlog_live_…` from path (a)/(b), or `SUPERLOG_TEST` from path (c) until they swap it.
+- `OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>` — `<key>` is the real `superlog_live_…` once pairing/signup completed; `SUPERLOG_TEST` if it didn't (user can swap later).
 
 For local dev, point at the `.env.local` / `.env.superlog` file you wrote — already done. For deploy, give **concrete instructions for the targets you actually detected in the repo**:
 
@@ -174,7 +152,13 @@ Only mention targets that actually exist in the repo. Don't list every option as
 
 Once env vars are wired into the deploy target, the user deploys (or runs locally) so first events start flowing. Offer to run the platform CLI for them when one is detected and likely authed (`vercel`, `railway`, `flyctl`, `gh secret set` for Actions). When in doubt, ask before running — deploy commands are observable and not always reversible.
 
-Then point them at **https://superlog.sh/**. The first time they land there, Superlog's onboarding wizard takes over: it polls for the first events, then walks them through connecting GitHub (so the fix-agent can open PRs) and Slack (so investigations can ping a channel). The skill does **not** drive these integrations — the wizard does, and it's already designed for that.
+**This is the place to elicit a choice.** If the repo has signals for *multiple* deploy targets (e.g. `Dockerfile` + `vercel.json`), or *no* clear target (no platform config + no Procfile + no infra dir), ask the user which one to wire up rather than guessing. One question, one answer:
+
+> "I see signals for `<X>` and `<Y>` here — which is this project actually deployed to?" (or, if none: "How do you deploy this — Vercel, Railway, Fly, Docker, something else?")
+
+Then write the env vars to that target (or those targets) and stop.
+
+Then point the user at **https://superlog.sh/**. The first time they land there, Superlog's onboarding wizard takes over: it polls for the first events, then walks them through connecting GitHub (so the fix-agent can open PRs) and Slack (so investigations can ping a channel). The skill does **not** drive these integrations — the wizard does, and it's already designed for that.
 
 Tell the user, in one line: "Deploy your app, then open https://superlog.sh/ — the dashboard will detect your first events and walk you through GitHub + Slack from there."
 
