@@ -1,6 +1,6 @@
 ---
 name: otel-nextjs-style
-description: "Next.js/Vercel OpenTelemetry style: instrumentation.ts, @vercel/otel bootstrap, native @opentelemetry/api call sites, env docs, and no raw NodeSDK replacement."
+description: "Next.js/Vercel OpenTelemetry style: instrumentation.ts, @vercel/otel bootstrap, native @opentelemetry/api call sites, inline endpoint + ingest key, and no raw NodeSDK replacement."
 ---
 
 # OTel Next.js Style
@@ -13,7 +13,7 @@ import { registerOTel } from "@vercel/otel";
 
 export function register() {
   registerOTel({
-    serviceName: process.env.OTEL_SERVICE_NAME ?? "mugline-web",
+    serviceName: "mugline-web",
   });
 }
 ```
@@ -44,7 +44,7 @@ anthropicInstrumentation.manuallyInstrument(Anthropic);
 
 export function register() {
   registerOTel({
-    serviceName: process.env.OTEL_SERVICE_NAME ?? "mugline-web",
+    serviceName: "mugline-web",
     instrumentations: [anthropicInstrumentation],
     logRecordProcessors: [new BatchLogRecordProcessor(new OTLPLogExporter())],
   });
@@ -117,14 +117,25 @@ logger.emit({
 });
 ```
 
-## Env And Smoke
+## Configuration And Smoke
 
-Document server-side env vars:
+Inline the endpoint and ingest key in `instrumentation.ts` — pass them
+explicitly to `registerOTel`. Don't rely on `OTEL_EXPORTER_OTLP_*` env vars:
+the Superlog ingest key is project-scoped + write-only and inline config
+sidesteps Vercel's env-propagation quirks during preview builds.
 
-```text
-OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh
-OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>
-OTEL_SERVICE_NAME=mugline-web
+```ts
+const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
+const SUPERLOG_KEY = "superlog_live_…"; // set by superlog-onboard skill on pairing
+
+registerOTel({
+  serviceName: "mugline-web",
+  traceExporter: new OTLPTraceExporter({
+    url: `${SUPERLOG_ENDPOINT}/v1/traces`,
+    headers: { authorization: `Bearer ${SUPERLOG_KEY}` },
+  }),
+  // …same shape for log + metric exporters
+});
 ```
 
 Smoke checks should use tools already in the repo, e.g. `npm run typecheck` or
