@@ -69,19 +69,23 @@ Preserve existing `logging.basicConfig`, console/file handlers, and log levels.
 
 ## Init Behavior
 
-If the runtime needs OTLP auth headers, check `OTEL_EXPORTER_OTLP_HEADERS` during
-initialization. When it is absent, log one clear warning and return without
-installing exporters.
+Inline the endpoint and ingest key directly in the init module — don't read
+them from env. The ingest key is project-scoped + write-only (Sentry DSN
+shaped), so source-level configuration is the right default; env indirection
+just adds a class of "OTel didn't start because env wasn't set" deploy
+failures.
 
 ```python
-def init_observability() -> bool:
-    if not os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-        logging.getLogger(__name__).warning(
-            "otel disabled; OTEL_EXPORTER_OTLP_HEADERS is not set"
-        )
-        return False
+SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
+SUPERLOG_KEY = "superlog_live_…"  # set by superlog-onboard skill on pairing
+
+
+def init_observability() -> None:
+    exporter = OTLPSpanExporter(
+        endpoint=f"{SUPERLOG_ENDPOINT}/v1/traces",
+        headers={"authorization": f"Bearer {SUPERLOG_KEY}"},
+    )
     ...
-    return True
 ```
 
 Add a small `_INITIALIZED` guard only when the app can realistically call this

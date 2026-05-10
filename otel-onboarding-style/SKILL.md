@@ -52,29 +52,28 @@ withTelemetry(...);
   `llm.generate_copy` or `llm.voice_response` is usually more useful than
   `llm.anthropic.messages.create`.
 
-## Env Vars
+## Endpoint and key
 
-Use standard OTel env vars:
+Inline the endpoint and the project's ingest key directly in the bootstrap
+source — don't read from `OTEL_EXPORTER_OTLP_*` env vars and don't write
+`.env` files. The Superlog ingest key is project-scoped + write-only (Sentry
+DSN shaped), so source-level configuration is the right default; env-var
+indirection only adds deploy-time failure modes.
 
 ```text
-OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh
-OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>
+SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
+SUPERLOG_KEY = "superlog_live_…"   # or "SUPERLOG_TEST" while pairing
 ```
 
-Do not use legacy names such as `SUPERLOG_API_KEY` or `SUPERLOG_INTAKE_URL`,
-even as placeholder text in docs or comments. Use neutral placeholders such as
-`<key from dashboard>` or `SUPERLOG_TEST`.
+Do not invent legacy names such as `SUPERLOG_API_KEY` or `SUPERLOG_INTAKE_URL`,
+even as placeholder text in docs or comments. While pairing is in flight, use
+the literal `SUPERLOG_TEST` sentinel — Superlog's ingest accepts it without
+forwarding events anywhere, so the bootstrap exercises the full code path
+before the real key arrives.
 
-Use public equivalents only for client bundles, e.g.
-`EXPO_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT`.
-
-Using standard SDK env-var exporter configuration is fine when it sends traces,
-metrics, and logs to the configured backend. Explicit per-signal exporter URLs
-are also fine when the runtime needs them.
-
-If required OTLP credentials are absent, make that visible at startup: log one
-clear warning and skip exporter setup instead of failing later or silently
-dropshipping unauthenticated telemetry.
+Pass the inline values to the SDK explicitly via the exporter constructor's
+`endpoint` / `headers` options. Do not configure the SDK off implicit env-var
+reads.
 
 If the repo can call telemetry init from multiple paths, guard provider/exporter
 setup so repeated imports, tests, reloads, or framework callbacks do not install

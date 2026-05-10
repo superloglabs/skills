@@ -27,11 +27,13 @@ recordCounter(...);
 trackSuperlogEvent(...);
 ```
 
-Keep the endpoint and headers in one setup area:
+Keep the endpoint and ingest key inline in one setup area near the top of the
+function. Do not read them from env — the ingest key is project-scoped +
+write-only and Edge runtimes are flaky about env propagation anyway.
 
-```text
-OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh
-OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>
+```ts
+const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
+const SUPERLOG_KEY = "superlog_live_…"; // set by superlog-onboard skill on pairing
 ```
 
 ## Signals
