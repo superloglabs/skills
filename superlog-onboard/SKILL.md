@@ -22,15 +22,15 @@ Before editing, read the applicable companion skills:
 
 ## Step 0 — Endpoint and key handling
 
-The **OTLP endpoint** is always `https://intake.superlog.sh`.
+The **OTLP endpoint** is always `https://intake.superlog.sh` and **goes inline** in the bootstrap code — it's not a secret, no env-var indirection needed.
 
-The **ingest API key** starts with `superlog_live_` and is project-scoped + write-only. It's a secret: **never embed it as a literal in source files.** It only ever goes into env files (`.env.local`, `.env.superlog`, the language equivalent) read at runtime.
+The **ingest API key** starts with `superlog_live_` and is **project-scoped + write-only** — it can only ingest events into one project, can't read anything, can't change settings. Treat it like a Sentry DSN, a PostHog public key, or a Datadog RUM client token: **inline it directly in the OTel bootstrap source** alongside the endpoint. No `.env` files, no deploy-target wiring, no `process.env.OTEL_EXPORTER_OTLP_HEADERS`. The user deploys their code and events flow.
 
 Two paths, no questions asked:
 
 ### Key in the prompt
 
-If the invoking prompt or env already contains a `superlog_live_…` key, use it. Validate the prefix, write it into env files, never echo it back to the chat. Done — move on to Step 1.
+If the invoking prompt already contains a `superlog_live_…` key, validate the prefix and inline it in every bootstrap file you write. Done — move on to Step 1.
 
 ### No key
 
@@ -38,12 +38,10 @@ Kick off the device flow immediately, then keep working in parallel — don't bl
 
 1. `POST https://api.superlog.sh/oauth/device` with `Content-Type: application/json` and body `{"flow":"skill"}`. Response includes `device_code`, `user_code`, `verification_uri_complete` (a `https://superlog.sh/activate?code=…&flow=skill` URL), `expires_in` (seconds), `interval` (poll interval seconds).
 2. Open `verification_uri_complete` in the user's default browser (`open` / `xdg-open` / `start ""`). Print the URL too so they can copy it if the open command silently fails. Tell the user *briefly* what's happening: signup is open in their browser, the key flows back here automatically, you're going to keep working.
-3. While the user signs up, **do not block.** Keep going with Steps 1–4. Use the literal sentinel `SUPERLOG_TEST` in env files as a placeholder — Superlog's ingest accepts it from anyone (returns 200 without forwarding anywhere), so the user's app can boot and exercise the OTel bootstrap path while signup is in flight.
-4. At Step 5, poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` every `interval` seconds. `428` = `authorization_pending`, keep waiting. `200` returns `{ingest_key, project_id, user, org, flow:"skill"}`. `410` = expired (user took longer than `expires_in`).
-5. On 200: rewrite every env file you wrote to replace `SUPERLOG_TEST` with the real `ingest_key`. Never print the key back to chat (transcripts get logged). The web `/activate` page already confirms hand-off to the user.
+3. While the user signs up, **do not block.** Keep going with Steps 1–4. Inline the literal sentinel `SUPERLOG_TEST` in the bootstrap source as a placeholder — Superlog's ingest accepts it from anyone (returns 200 without forwarding anywhere), so the user's app can boot and exercise the OTel bootstrap path while signup is in flight.
+4. At Step 5, poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` every `interval` seconds. `428` = `authorization_pending`, keep waiting. `200` returns `{ingest_key, project_id, user, org, flow:"skill"}`. `410` = expired.
+5. On 200: walk the source files you wrote and replace the `SUPERLOG_TEST` literal with the real `ingest_key`. Never print the key back to chat (transcripts get logged). The web `/activate` page already confirms hand-off to the user.
 6. On 410 / user closed the tab: leave `SUPERLOG_TEST` in place and tell the user to sign up at https://superlog.sh/ and swap it later.
-
-Sign-up is **not** elicited. Deploy is — see Step 4 / Step 5 below for when to ask the user which target to deploy to.
 
 ## Step 1 — Map every app/service in the repo
 
@@ -61,7 +59,7 @@ Wire all three signals — traces, logs, metrics. **Logs go through OTLP, not ju
 
 Bootstrap rules:
 - The bootstrap file must run before any framework imports. Use the language/framework's documented hook (`--import` flag, `instrumentation.ts`, top-of-`main.py` import, etc.).
-- Read the endpoint and key from env. If the auth header is missing, log one clear warning and leave the app running in no-op/disabled mode rather than silently dropping telemetry or crashing local dev.
+- Inline the endpoint (`https://intake.superlog.sh`) and the project's ingest key directly in the bootstrap source. Don't read from `process.env.OTEL_EXPORTER_OTLP_*` or write any `.env` files — the key is write-only, and inline configuration removes a whole class of "OTel didn't start because env vars weren't set" deploy failures. (See the framework-specific style skills for the exact shape per stack.)
 - Use HTTP OTLP exporters, not gRPC. gRPC pulls in native bindings that break bundlers and complicate containers.
 - Use the project's existing package manager (detect via lockfile).
 - Prefer idempotent edits. If a config file already exists, edit don't overwrite.
@@ -69,7 +67,7 @@ Bootstrap rules:
 
 Framework rules:
 - **Next.js/Vercel:** use `instrumentation.ts` with `@vercel/otel` `registerOTel(...)` as the bootstrap. Do not substitute a raw `@opentelemetry/sdk-node` / `NodeSDK` bootstrap unless the repo already uses that architecture and you are extending it. Use `@opentelemetry/api` tracers/meters inside route handlers only where auto-instrumentation is blind.
-- **Expo/React Native:** preserve existing Expo Go / unsupported-runtime guards. In supported builds, call `initObservability()` before Sentry and before app registration/user code. Use public env vars like `EXPO_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT`, `EXPO_PUBLIC_OTEL_EXPORTER_OTLP_HEADERS`, and `EXPO_PUBLIC_OTEL_SERVICE_NAME`.
+- **Expo/React Native:** preserve existing Expo Go / unsupported-runtime guards. In supported builds, call `initObservability()` before Sentry and before app registration/user code. Inline the endpoint + ingest key in the observability module — no `EXPO_PUBLIC_OTEL_*` env vars. The bootstrap reads them straight from constants.
 - **Supabase Edge Functions:** native Deno OpenTelemetry does not work in hosted Supabase Edge today. Use the tiny OTel-shaped shim pattern above; keep exporter endpoint/headers in one setup area and avoid Superlog-specific function/file names.
 - **Python/FastAPI:** use native instrumentation such as `FastAPIInstrumentor.instrument_app(app)` rather than replacing request handling with manual middleware.
 - **Python/LiveKit:** lifecycle spans that cross shutdown callbacks may use `start_span` + `trace.use_span(..., end_on_exit=False)` and end in the shutdown callback. Bounded work should still use decorators or context managers.
@@ -111,8 +109,8 @@ Get the meter once at module level, create instruments at module level, incremen
 
 Per service:
 
-1. **Run the project's own dev or build command** (whatever its `package.json` / `pyproject` / `Makefile` already wires up). Confirm it starts cleanly with no errors that trace back to your OTel install. Also run a telemetry bootstrap smoke that imports or starts the app with the OTel env vars present, so provider setup, exporter construction, log bridging, and framework instrumentation all initialize. For a Python server this can be an import/startup command such as `uv run python -c 'from app.main import app; print(app.title)'`; for Node/Next use the repo's build/start path. For a server, hit at least one route with curl so traffic flows through the instrumentation; choose a route that exercises an instrumented operation when practical, not only a static health route. For a CLI, invoke a real command. **Don't ship if the app's own startup is now broken** — that's a regression.
-2. **Confirm telemetry leaves the process.** With `SUPERLOG_TEST` (or a real key) in env, OTLP POSTs from the dev server should return 2xx — that proves the bootstrap is reaching the network. As an extra sanity check, you can `curl -X POST https://intake.superlog.sh/v1/traces -H "authorization: Bearer SUPERLOG_TEST" -H "content-type: application/json" -d '{}'` and confirm 200. The real signal is the running app's own POSTs succeeding by the time the dev server shuts down — if they don't, the bootstrap is wrong (most often: SDK loaded too late, or shutdown not flushing).
+1. **Run the project's own dev or build command** (whatever its `package.json` / `pyproject` / `Makefile` already wires up). Confirm it starts cleanly with no errors that trace back to your OTel install. Also run a telemetry bootstrap smoke that imports or starts the app, so provider setup, exporter construction, log bridging, and framework instrumentation all initialize. For a Python server this can be an import/startup command such as `uv run python -c 'from app.main import app; print(app.title)'`; for Node/Next use the repo's build/start path. For a server, hit at least one route with curl so traffic flows through the instrumentation; choose a route that exercises an instrumented operation when practical, not only a static health route. For a CLI, invoke a real command. **Don't ship if the app's own startup is now broken** — that's a regression.
+2. **Confirm telemetry leaves the process.** With the inline `SUPERLOG_TEST` (or real key) in the bootstrap, OTLP POSTs from the dev server should return 2xx — that proves the bootstrap is reaching the network. As an extra sanity check, you can `curl -X POST https://intake.superlog.sh/v1/traces -H "authorization: Bearer SUPERLOG_TEST" -H "content-type: application/json" -d '{}'` and confirm 200. The real signal is the running app's own POSTs succeeding by the time the dev server shuts down — if they don't, the bootstrap is wrong (most often: SDK loaded too late, or shutdown not flushing).
 
 A bootstrap that loads but never POSTs is not a partial success. Fix it before moving on.
 
@@ -120,44 +118,20 @@ A bootstrap that loads but never POSTs is not a partial success. Fix it before m
 
 If you started a device flow in Step 0, collect the key first. Print one line that you're waiting for sign-up to finish (so the user knows the terminal isn't frozen), then poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` at the `interval` returned earlier. Cap the wait at `expires_in` (default 600s).
 
-- On 200: rewrite every env file you wrote, replacing the `SUPERLOG_TEST` placeholder with the real `ingest_key`. Touch `.env.local`, `.env.superlog`, `.env.production`, etc. — whatever you created or edited. Never print the `ingest_key` back to chat (transcripts get logged); the web `/activate` page already confirms hand-off to the user.
-- On 410 / poll timeout: leave `SUPERLOG_TEST` in env, tell the user "sign-up didn't finish in time — sign up at https://superlog.sh/ when you're ready and swap the key." Continue with the rest of the closing message.
+- On 200: walk every source file where you inlined `SUPERLOG_TEST` and replace it with the real `ingest_key`. Never print the key back to chat (transcripts get logged); the web `/activate` page already confirms hand-off to the user.
+- On 410 / poll timeout: leave `SUPERLOG_TEST` inline, tell the user "sign-up didn't finish in time — sign up at https://superlog.sh/ when you're ready and swap the literal in the bootstrap files I wrote." Continue with the rest of the closing message.
 
-If the key was already supplied in the prompt, no polling needed — it's been in env from the start.
+If the key was already supplied in the prompt, no polling needed — it's been inline from the start.
 
 ### What changed
 
-3–7 short factual bullets covering: packages installed, files created/modified, env vars written, business spans/metrics added. Per service if changes differed, grouped if uniform. Mention any existing observability vendor (Sentry, Datadog, Logtail, Pino transports, etc.) you intentionally left in place so the coexistence is explicit.
+3–7 short factual bullets covering: packages installed, files created/modified, business spans/metrics added. Per service if changes differed, grouped if uniform. Mention any existing observability vendor (Sentry, Datadog, Logtail, Pino transports, etc.) you intentionally left in place so the coexistence is explicit.
 
-### Set these env vars to launch
+### Deploy
 
-Two env vars need to reach every runtime that runs the instrumented code (local dev, CI, prod):
+Tell the user to deploy as they normally would — push to their hosting platform, run their existing CI, or run locally. There are no env vars to wire and nothing platform-specific to configure: the endpoint and key are inline in the bootstrap, so events start flowing the moment the instrumented code runs.
 
-- `OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh`
-- `OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>` — `<key>` is the real `superlog_live_…` once pairing/signup completed; `SUPERLOG_TEST` if it didn't (user can swap later).
-
-For local dev, point at the `.env.local` / `.env.superlog` file you wrote — already done. For deploy, give **concrete instructions for the targets you actually detected in the repo**:
-
-- `Dockerfile` / `docker-compose.yml` → `docker run -e OTEL_EXPORTER_OTLP_ENDPOINT=… -e OTEL_EXPORTER_OTLP_HEADERS=…` (or service-level `environment:` in compose). Mention multi-stage builds shouldn't bake the key in.
-- `vercel.json` / `.vercel/` → `vercel env add OTEL_EXPORTER_OTLP_HEADERS production` (and same for `OTEL_EXPORTER_OTLP_ENDPOINT`).
-- `railway.json` / Railway already wired → `railway variables --set 'OTEL_EXPORTER_OTLP_HEADERS=…' --service <name>`.
-- `fly.toml` → `fly secrets set OTEL_EXPORTER_OTLP_HEADERS=…`.
-- `.github/workflows/*.yml` → repo Settings → Secrets → add as Actions secrets, then reference as `${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}` in the workflow.
-- `Procfile` / Heroku → `heroku config:set OTEL_EXPORTER_OTLP_HEADERS=…`.
-- Kubernetes manifests → add to a Secret and mount via `envFrom` / `valueFrom.secretKeyRef`.
-- Otherwise → the generic shell-export form for whatever shell is in use.
-
-Only mention targets that actually exist in the repo. Don't list every option as a wall of text.
-
-### Deploy + finish setup
-
-Once env vars are wired into the deploy target, the user deploys (or runs locally) so first events start flowing. Offer to run the platform CLI for them when one is detected and likely authed (`vercel`, `railway`, `flyctl`, `gh secret set` for Actions). When in doubt, ask before running — deploy commands are observable and not always reversible.
-
-**This is the place to elicit a choice.** If the repo has signals for *multiple* deploy targets (e.g. `Dockerfile` + `vercel.json`), or *no* clear target (no platform config + no Procfile + no infra dir), ask the user which one to wire up rather than guessing. One question, one answer:
-
-> "I see signals for `<X>` and `<Y>` here — which is this project actually deployed to?" (or, if none: "How do you deploy this — Vercel, Railway, Fly, Docker, something else?")
-
-Then write the env vars to that target (or those targets) and stop.
+If the user asks "where do I put the key in production?" — the answer is "you already did, it's in the source you just deployed."
 
 ## Step 6 — Drive GitHub, Slack, and MCP install
 
@@ -204,7 +178,7 @@ When all three are done (or skipped), close out with a single line directing the
 
 - Never modify files outside the project root.
 - Never commit, push, or open PRs.
-- Never embed the ingest key as a literal in source — env files only.
+- Inline the ingest key in source. It's a project-scoped, write-only token (think Sentry DSN); env-var indirection just adds deploy-time failure modes for no gain.
 - Never remove an existing observability vendor unless the user asks for it.
 - Use the project's existing package manager and existing logger.
 - Prefer native OTel packages for the language; don't reinvent telemetry plumbing the SDK already provides.

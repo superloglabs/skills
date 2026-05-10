@@ -1,6 +1,6 @@
 ---
 name: otel-expo-style
-description: "Expo / React Native OpenTelemetry style: bootstrap guards, init ordering, public env vars, mobile-compatible exporters, and product action spans."
+description: "Expo / React Native OpenTelemetry style: bootstrap guards, init ordering, inline endpoint + ingest key, mobile-compatible exporters, and product action spans."
 ---
 
 # OTel Expo Style
@@ -56,12 +56,21 @@ await tracer.startActiveSpan("mug.order.submit", async (span) => {
 });
 ```
 
-## Env
+## Configuration
 
-Client bundles need public build-time vars:
+Inline the endpoint and ingest key directly in the observability module. The
+key is project-scoped + write-only (Sentry-DSN shaped), so source-level
+configuration is the right default for Expo — and it sidesteps the
+build-time-vs-runtime quirks of `EXPO_PUBLIC_*` env vars in different
+build profiles.
 
-```text
-EXPO_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT=https://intake.superlog.sh
-EXPO_PUBLIC_OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <key>
-EXPO_PUBLIC_OTEL_SERVICE_NAME=mugline-mobile
+```ts
+const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
+const SUPERLOG_KEY = "superlog_live_…"; // set by superlog-onboard skill on pairing
+const SERVICE_NAME = "mugline-mobile";
+
+const exporter = new OTLPTraceExporter({
+  url: `${SUPERLOG_ENDPOINT}/v1/traces`,
+  headers: { authorization: `Bearer ${SUPERLOG_KEY}` },
+});
 ```
