@@ -20,6 +20,7 @@ npx skills add superloglabs/skills --skill superlog-onboard
 
 - `superlog-onboard` - install Superlog observability across every runnable app and service in a repo.
 - `otel-onboarding-style` - general OpenTelemetry style guidance.
+- `otel-generic-style` - fallback style guidance for languages without a dedicated skill (Go, Java, Ruby, Rust, .NET, PHP, Elixir, plain Node, etc.).
 - `otel-python-style` - Python OpenTelemetry style guidance.
 - `otel-fastapi-style` - FastAPI instrumentation guidance.
 - `otel-nextjs-style` - Next.js and Vercel OpenTelemetry guidance.
