@@ -57,6 +57,15 @@ No broad wrapper APIs. Avoid reusable helpers like `sendSuperlogSpan`, `recordCo
 
 Wire all three signals — traces, logs, metrics. **Logs go through OTLP, not just stdout** — set up the OTel log bridge for the language so app logs (with their existing log levels and structured fields) carry the active `trace_id` / `span_id` automatically. The user's existing logger keeps working; you're just adding an OTLP handler/processor underneath.
 
+The log bridge is not optional and is not "covered" by the SDK init alone — most language SDKs and framework wrappers wire traces (and sometimes metrics) by default but require an **explicit** `LoggerProvider` + OTLP log exporter + log-record processor + a bridge to the existing logger. Examples: Python stdlib needs `LoggerProvider` + `OTLPLogExporter` + `LoggingHandler` attached to the root logger (and `LoggingInstrumentor` for trace correlation on existing records); Node needs `@opentelemetry/sdk-logs` + an instrumentation for the project's logger (`pino`/`winston`/`bunyan`); `@vercel/otel` requires the `logRecordProcessor(s)` option — without it, no logs leave the process. The companion style skills spell out the exact pieces per stack — read them.
+
+Common log-bridge mistakes to actively check for:
+- Handler attached to a named logger when the app uses the root logger (or vice versa) — nothing flows.
+- Default level filter (e.g. WARNING) swallowing the INFO/DEBUG lines the user actually wants in Superlog.
+- `BatchLogRecordProcessor` not flushed on shutdown → short-lived CLIs, serverless, and edge functions drop the last batch. Wire `shutdown()` / `forceFlush()` into the runtime's exit hook.
+- An existing vendor transport (Pino → Logtail, Winston → Datadog, etc.) left in place is fine and expected — but make sure you're bridging from the *logger*, not adding a second transport that double-emits the same line through a different formatter.
+- Logs emitted outside any span will arrive without `trace_id` / `span_id`. That is correct and expected; do not "fix" it by starting throwaway spans around log calls.
+
 Bootstrap rules:
 - The bootstrap file must run before any framework imports. Use the language/framework's documented hook (`--import` flag, `instrumentation.ts`, top-of-`main.py` import, etc.).
 - Inline the endpoint (`https://intake.superlog.sh`) and the project's ingest key directly in the bootstrap source. Don't read from `process.env.OTEL_EXPORTER_OTLP_*` or write any `.env` files — the key is write-only, and inline configuration removes a whole class of "OTel didn't start because env vars weren't set" deploy failures. (See the framework-specific style skills for the exact shape per stack.)
@@ -66,7 +75,7 @@ Bootstrap rules:
 - Set resource attributes on the OTel resource for every service: `service.name`, `service.version`, `deployment.environment.name`, and **`vcs.repository.url.full`** — the canonical https URL of the repo (e.g. `https://github.com/acme/api`). The repo URL is the important one and is fine to hardcode alongside `service.name` in the SDK init; if the build platform exposes the slug (Vercel `VERCEL_GIT_REPO_OWNER`/`VERCEL_GIT_REPO_SLUG`, Railway `RAILWAY_GIT_REPO_OWNER`/`RAILWAY_GIT_REPO_NAME`), prefer reading from env. Also set **`vcs.ref.head.revision`** (commit SHA) on a best-effort basis from whatever env the runtime already injects (`VERCEL_GIT_COMMIT_SHA`, `RAILWAY_GIT_COMMIT_SHA`, `GITHUB_SHA`, `SOURCE_COMMIT`, `GIT_COMMIT`, `HEROKU_SLUG_COMMIT`, …). Do not shell out to `git` from the running process. Skipping the SHA is fine, skipping the URL is not. Use the OTel semantic-convention keys exactly — do not invent `git.repo` / `app.repo_url`.
 
 Framework rules:
-- **Next.js/Vercel:** use `instrumentation.ts` with `@vercel/otel` `registerOTel(...)` as the bootstrap. Do not substitute a raw `@opentelemetry/sdk-node` / `NodeSDK` bootstrap unless the repo already uses that architecture and you are extending it. Use `@opentelemetry/api` tracers/meters inside route handlers only where auto-instrumentation is blind.
+- **Next.js/Vercel:** use `instrumentation.ts` with `@vercel/otel` `registerOTel(...)` as the bootstrap. Do not substitute a raw `@opentelemetry/sdk-node` / `NodeSDK` bootstrap unless the repo already uses that architecture and you are extending it. Use `@opentelemetry/api` tracers/meters inside route handlers only where auto-instrumentation is blind. **`registerOTel` does not export logs by default** — pass `logRecordProcessor` (v1) / `logRecordProcessors` (v2) with an `OTLPLogExporter` from `@opentelemetry/exporter-logs-otlp-http`, or no logs will leave the process. Match the option name to the installed `@vercel/otel` major version.
 - **Expo/React Native:** preserve existing Expo Go / unsupported-runtime guards. In supported builds, call `initObservability()` before Sentry and before app registration/user code. Inline the endpoint + ingest key in the observability module — no `EXPO_PUBLIC_OTEL_*` env vars. The bootstrap reads them straight from constants.
 - **Supabase Edge Functions:** native Deno OpenTelemetry does not work in hosted Supabase Edge today. Use the tiny OTel-shaped shim pattern above; keep exporter endpoint/headers in one setup area and avoid Superlog-specific function/file names.
 - **Python/FastAPI:** use native instrumentation such as `FastAPIInstrumentor.instrument_app(app)` rather than replacing request handling with manual middleware.
@@ -85,7 +94,15 @@ Wrap **every critical business operation** with an active span. Auto-instrumente
 - Naming: `domain.verb` (`order.process`, `payment.charge`, `email.send`, `agent.run`, `interview.create`, `job.<type>`).
 - Attributes: entity IDs (order.id, user.id, workspace.id, tenant.id), counts, key boolean branch outcomes, model name / provider for LLM calls.
 - Record exceptions: `span.recordException(err)` + `span.setStatus({ code: ERROR })` on failure paths.
-- For Python functions with clear boundaries, prefer `@tracer.start_as_current_span("operation.name")`. Use a context manager when a decorator does not fit. Do not use detached `start_span()` + manual `end()` for bounded work.
+- For Python functions with clear boundaries, prefer `@tracer.start_as_current_span("operation.name")` — the same call works as a decorator and as a context manager, and the decorator form is usually what you want for a whole function:
+
+  ```python
+  @tracer.start_as_current_span("do_work")
+  def do_work():
+      print("doing some work...")
+  ```
+
+  Use a context manager when a decorator does not fit (partial scope, dynamic span name, etc.). Do not use detached `start_span()` + manual `end()` for bounded work.
 - Skip trivial getters, pure transforms, internal helpers — anything with no real latency or failure mode.
 - **Never put PII in attributes** (emails, passwords, tokens, full request bodies).
 
@@ -110,9 +127,9 @@ Get the meter once at module level, create instruments at module level, incremen
 Per service:
 
 1. **Run the project's own dev or build command** (whatever its `package.json` / `pyproject` / `Makefile` already wires up). Confirm it starts cleanly with no errors that trace back to your OTel install. Also run a telemetry bootstrap smoke that imports or starts the app, so provider setup, exporter construction, log bridging, and framework instrumentation all initialize. For a Python server this can be an import/startup command such as `uv run python -c 'from app.main import app; print(app.title)'`; for Node/Next use the repo's build/start path. For a server, hit at least one route with curl so traffic flows through the instrumentation; choose a route that exercises an instrumented operation when practical, not only a static health route. For a CLI, invoke a real command. **Don't ship if the app's own startup is now broken** — that's a regression.
-2. **Confirm telemetry leaves the process.** With the inline `SUPERLOG_TEST` (or real key) in the bootstrap, OTLP POSTs from the dev server should return 2xx — that proves the bootstrap is reaching the network. As an extra sanity check, you can `curl -X POST https://intake.superlog.sh/v1/traces -H "authorization: Bearer SUPERLOG_TEST" -H "content-type: application/json" -d '{}'` and confirm 200. The real signal is the running app's own POSTs succeeding by the time the dev server shuts down — if they don't, the bootstrap is wrong (most often: SDK loaded too late, or shutdown not flushing).
+2. **Confirm telemetry leaves the process — for all three signals.** With the inline `SUPERLOG_TEST` (or real key) in the bootstrap, OTLP POSTs from the dev server should return 2xx for **each** of `/v1/traces`, `/v1/logs`, and `/v1/metrics` — that proves the full bootstrap is reaching the network, not just the trace pipeline. The signal is the running app's own POSTs to all three paths succeeding by the time the dev server shuts down. To force the logs path specifically, hit a route (or invoke a CLI command) that you know calls the project's logger inside an instrumented operation, then watch the dev server's outbound traffic / debug exporter output for a `/v1/logs` POST. If only `/v1/traces` shows up, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor).
 
-A bootstrap that loads but never POSTs is not a partial success. Fix it before moving on.
+A bootstrap that loads but never POSTs — or POSTs traces but no logs/metrics — is not a partial success. Fix it before moving on.
 
 ## Step 5 — Hand-off (final message to the user)
 
