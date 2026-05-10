@@ -159,34 +159,46 @@ Once env vars are wired into the deploy target, the user deploys (or runs locall
 
 Then write the env vars to that target (or those targets) and stop.
 
-Then point the user at **https://superlog.sh/**. The first time they land there, Superlog's onboarding wizard takes over: it polls for the first events, then walks them through connecting GitHub (so the fix-agent can open PRs) and Slack (so investigations can ping a channel). The skill does **not** drive these integrations — the wizard does, and it's already designed for that.
+## Step 6 — Drive GitHub, Slack, and MCP install
 
-Tell the user, in one line: "Deploy your app, then open https://superlog.sh/ — the dashboard will detect your first events and walk you through GitHub + Slack from there."
+Only run this step if the device flow completed successfully (you have a real `ingest_key` and the `user_code` from the `/oauth/token` response). Skip it on poll timeout / sentinel — the user can install integrations from the dashboard later.
 
-Open the dashboard for them:
+Walk the user through three short steps in this order. Pause for confirmation between each so they can keep up.
 
-- macOS: `open "https://superlog.sh/"`
-- Linux: `xdg-open "https://superlog.sh/"`
-- Windows: `start "" "https://superlog.sh/"`
+### GitHub
 
-If `open` / `xdg-open` isn't available or returns non-zero, just print the URL — don't fail the skill.
+> "Opening the GitHub install page — pick the repos you want Superlog to read and approve. Press enter when you're back."
 
-### Suggest the Superlog MCP for next time
+Open `https://api.superlog.sh/github/install?user_code=<USER_CODE>` in their default browser (`open` / `xdg-open` / `start ""`). The browser walks them through GitHub's app install; the page bounces back to `/activate?…&gh=done` with a "GitHub connected" confirmation.
 
-Before ending the skill, suggest installing the Superlog MCP server so the agent (Claude Code, Codex, Cursor, etc.) can query their telemetry directly the next time they're debugging — search logs, pull traces, check error rates from inside the chat without context-switching to the dashboard.
+When they hit enter (or say done in chat), move on. If they say "skip" or close the tab, move on without complaint.
 
-For Claude Code (which is what the user is running this skill in, by far the most likely case):
+### Slack
+
+> "Opening Slack OAuth — pick the workspace and approve. Press enter when you're back."
+
+Open `https://api.superlog.sh/slack/install?user_code=<USER_CODE>` the same way. Slack returns to `/activate?…&slack=done`.
+
+Same skip semantics.
+
+### Superlog MCP
+
+Suggest installing the Superlog MCP server so the agent (Claude Code, Codex, Cursor, etc.) can query telemetry directly next time they're debugging — search logs, pull traces, check error rates from inside the chat without context-switching to the dashboard.
+
+For **Claude Code** (most common — that's where this skill is running), offer to run it for them:
 
 ```
 claude mcp add --transport http superlog https://api.superlog.sh/mcp
 ```
 
-Mention but don't run the equivalents for other agents in case they use more than one:
+This edits the user's Claude Code config. **Confirm before running** (the user may have a custom MCP scope or want to install elsewhere). If they decline, print the command so they can run it themselves later.
+
+For other agents the user might also use, mention but do *not* run:
 
 - Codex: `codex mcp add superlog --url https://api.superlog.sh/mcp && codex mcp login superlog`
 - Cursor / others: copy the `mcpServers` snippet from https://superlog.sh/ → Connect.
 
-Frame this as a suggestion, not a step you execute. The user has to opt in to MCP servers and may not want one yet.
+When all three are done (or skipped), close out with a single line directing the user to deploy their app — they're ready to ship.
 
 ## Hard rules
 
