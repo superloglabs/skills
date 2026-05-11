@@ -1,6 +1,6 @@
 ---
 name: otel-livekit-style
-description: "LiveKit Agents OpenTelemetry style: entrypoint/session lifecycle spans, shutdown callbacks, session metrics, and LLM turn cost metrics."
+description: "LiveKit Agents OpenTelemetry style: entrypoint/session lifecycle spans, shutdown callbacks, session metrics, and LLM turn token counters."
 ---
 
 # OTel LiveKit Style
@@ -80,21 +80,25 @@ endpoint. Checking that tracer/meter objects are non-None is not enough.
 Every LLM provider/call site in the voice agent needs:
 
 - span around the call
-- token counters
-- cost counter
+- token counters (`llm.tokens.input`, `llm.tokens.output`)
 - tenant/provider/model/use case/call site/outcome attributes
+
+Do not add `llm.cost_usd` metrics; Superlog estimates cost centrally from
+provider/model/token data.
 
 Name the span for the product operation, not the provider transport call.
 For example, prefer `llm.voice_response` or `llm.generate_copy` over
 `llm.anthropic.messages.create`.
 
 ```python
-llm_cost_usd.add(cost, {
+attrs = {
     "tenant.id": tenant_id,
     "llm.provider": "anthropic",
     "llm.model": model,
     "llm.use_case": "voice.initial_greeting",
     "llm.call_site": "_call_mug_copy_llm",
     "outcome": "success",
-})
+}
+llm_tokens_input.add(input_tokens, attrs)
+llm_tokens_output.add(output_tokens, attrs)
 ```
