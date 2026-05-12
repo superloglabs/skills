@@ -34,14 +34,23 @@ If the invoking prompt already contains a `superlog_live_…` key, validate the 
 
 ### No key
 
-Kick off the device flow immediately, then keep working in parallel — don't block install on signup.
+Generate the key locally, register a signup intent immediately, then keep working in parallel — don't block install on signup.
 
-1. `POST https://api.superlog.sh/oauth/device` with `Content-Type: application/json` and body `{"flow":"skill"}`. Response includes `device_code`, `user_code`, `verification_uri_complete` (a `https://superlog.sh/activate?code=…&flow=skill` URL), `expires_in` (seconds), `interval` (poll interval seconds).
-2. Open `verification_uri_complete` in the user's default browser (`open` / `xdg-open` / `start ""`). Print the URL too so they can copy it if the open command silently fails. Tell the user *briefly* what's happening: signup is open in their browser, the key flows back here automatically, you're going to keep working.
-3. While the user signs up, **do not block.** Keep going with Steps 1–4. Inline the literal sentinel `SUPERLOG_TEST` in the bootstrap source as a placeholder — Superlog's ingest accepts it from anyone (returns 200 without forwarding anywhere), so the user's app can boot and exercise the OTel bootstrap path while signup is in flight.
-4. At Step 5, poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` every `interval` seconds. `428` = `authorization_pending`, keep waiting. `200` returns `{ingest_key, project_id, user, org, flow:"skill"}`. `410` = expired.
-5. On 200: walk the source files you wrote and replace the `SUPERLOG_TEST` literal with the real `ingest_key`. Never print the key back to chat (transcripts get logged). The web `/activate` page already confirms hand-off to the user.
-6. On 410 / user closed the tab: leave `SUPERLOG_TEST` in place and tell the user to sign up at https://superlog.sh/ and swap it later.
+1. Generate a random plaintext ingest key with the shape `superlog_live_<base64url-ish random bytes>`. Use at least 32 bytes of entropy after the prefix. Keep the plaintext in memory so you can inline it in bootstrap files, but never print the full key back to chat.
+2. Compute `keyHash = sha256(plaintextKey)` as lowercase hex and `keyPrefix = "superlog_live_" + first 6 characters after the prefix`.
+3. `POST https://api.superlog.sh/api/signup-intents` with `Content-Type: application/json` and body:
+
+   ```json
+   {
+     "keyHash": "<sha256 hex>",
+     "keyPrefix": "superlog_live_abc123",
+     "returnTo": null
+   }
+   ```
+
+   If the agent runtime exposes a safe return/deep link back to the current conversation, pass it as `returnTo`; otherwise use `null`. Never put the plaintext key in this request.
+4. The response includes `id`, `signupUrl`, and `expiresAt`. Open `signupUrl` in the user's default browser (`open` / `xdg-open` / `start ""`). Print the URL too so they can copy it if the open command silently fails. Tell the user briefly: signup is open, GitHub/Slack happen there, and the key you generated will be registered to their project when they finish.
+5. While the user signs up, **do not block.** Keep going with Steps 1–4 using the generated plaintext key in the bootstrap source. Before signup finishes, ingest may reject that key; that is expected because the key is not claimed until the web flow completes.
 
 ## Step 1 — Map every app/service in the repo
 
@@ -127,18 +136,15 @@ Get the meter once at module level, create instruments at module level, incremen
 Per service:
 
 1. **Run the project's own dev or build command** (whatever its `package.json` / `pyproject` / `Makefile` already wires up). Confirm it starts cleanly with no errors that trace back to your OTel install. Also run a telemetry bootstrap smoke that imports or starts the app, so provider setup, exporter construction, log bridging, and framework instrumentation all initialize. For a Python server this can be an import/startup command such as `uv run python -c 'from app.main import app; print(app.title)'`; for Node/Next use the repo's build/start path. For a server, hit at least one route with curl so traffic flows through the instrumentation; choose a route that exercises an instrumented operation when practical, not only a static health route. For a CLI, invoke a real command. **Don't ship if the app's own startup is now broken** — that's a regression.
-2. **Confirm telemetry leaves the process — for all three signals.** With the inline `SUPERLOG_TEST` (or real key) in the bootstrap, OTLP POSTs from the dev server should return 2xx for **each** of `/v1/traces`, `/v1/logs`, and `/v1/metrics` — that proves the full bootstrap is reaching the network, not just the trace pipeline. The signal is the running app's own POSTs to all three paths succeeding by the time the dev server shuts down. To force the logs path specifically, hit a route (or invoke a CLI command) that you know calls the project's logger inside an instrumented operation, then watch the dev server's outbound traffic / debug exporter output for a `/v1/logs` POST. If only `/v1/traces` shows up, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor).
+2. **Confirm telemetry leaves the process — for all three signals.** After the browser signup flow finishes, OTLP POSTs from the dev server should return 2xx for **each** of `/v1/traces`, `/v1/logs`, and `/v1/metrics` — that proves the full bootstrap is reaching the network, not just the trace pipeline. The signal is the running app's own POSTs to all three paths succeeding by the time the dev server shuts down. To force the logs path specifically, hit a route (or invoke a CLI command) that you know calls the project's logger inside an instrumented operation, then watch the dev server's outbound traffic / debug exporter output for a `/v1/logs` POST. If signup is still in progress, a 401/403 from ingest is expected because the generated key has not been claimed yet; in that case verify the bootstrap initializes cleanly and ask the user to finish the open signup tab before treating outbound ingest as failed. If only `/v1/traces` shows up after signup, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor).
 
-A bootstrap that loads but never POSTs — or POSTs traces but no logs/metrics — is not a partial success. Fix it before moving on.
+A bootstrap that loads but never POSTs after signup is complete — or POSTs traces but no logs/metrics — is not a partial success. Fix it before moving on.
 
 ## Step 5 — Hand-off (final message to the user)
 
-If you started a device flow in Step 0, collect the key first. Print one line that you're waiting for sign-up to finish (so the user knows the terminal isn't frozen), then poll `POST https://api.superlog.sh/oauth/token` with `{"device_code":"…"}` at the `interval` returned earlier. Cap the wait at `expires_in` (default 600s).
+If you opened a signup intent in Step 0, do not poll for a key. The key is already in the source you wrote; the browser flow claims its hash, connects GitHub/Slack, and then tells the user to return to the agent and deploy.
 
-- On 200: walk every source file where you inlined `SUPERLOG_TEST` and replace it with the real `ingest_key`. Never print the key back to chat (transcripts get logged); the web `/activate` page already confirms hand-off to the user.
-- On 410 / poll timeout: leave `SUPERLOG_TEST` inline, tell the user "sign-up didn't finish in time — sign up at https://superlog.sh/ when you're ready and swap the literal in the bootstrap files I wrote." Continue with the rest of the closing message.
-
-If the key was already supplied in the prompt, no polling needed — it's been inline from the start.
+If the user says signup is done, optionally re-run the telemetry smoke so the generated key can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that events will start flowing once the open browser flow shows "Congrats!".
 
 ### What changed
 
@@ -150,29 +156,9 @@ Tell the user to deploy as they normally would — push to their hosting platfor
 
 If the user asks "where do I put the key in production?" — the answer is "you already did, it's in the source you just deployed."
 
-## Step 6 — Drive GitHub, Slack, and MCP install
+## Step 6 — MCP suggestion
 
-Only run this step if the device flow completed successfully (you have a real `ingest_key` and the `user_code` from the `/oauth/token` response). Skip it on poll timeout / sentinel — the user can install integrations from the dashboard later.
-
-Walk the user through three short steps in this order. Pause for confirmation between each so they can keep up.
-
-### GitHub
-
-> "Opening the GitHub install page — pick the repos you want Superlog to read and approve. Press enter when you're back."
-
-Open `https://api.superlog.sh/github/install?user_code=<USER_CODE>` in their default browser (`open` / `xdg-open` / `start ""`). The browser walks them through GitHub's app install; the page bounces back to `/activate?…&gh=done` with a "GitHub connected" confirmation.
-
-When they hit enter (or say done in chat), move on. If they say "skip" or close the tab, move on without complaint.
-
-### Slack
-
-> "Opening Slack OAuth — pick the workspace and approve. Press enter when you're back."
-
-Open `https://api.superlog.sh/slack/install?user_code=<USER_CODE>` the same way. Slack returns to `/activate?…&slack=done`.
-
-Same skip semantics.
-
-### Superlog MCP
+Do not manually drive GitHub or Slack from the agent anymore. The signup intent page handles both integrations after auth; if the user signed in with GitHub, it still verifies the app has the right repo permissions.
 
 Suggest installing the Superlog MCP server so the agent (Claude Code, Codex, Cursor, etc.) can query telemetry directly next time they're debugging — search logs, pull traces, check error rates from inside the chat without context-switching to the dashboard.
 
@@ -189,7 +175,7 @@ For other agents the user might also use, mention but do *not* run:
 - Codex: `codex mcp add superlog --url https://api.superlog.sh/mcp && codex mcp login superlog`
 - Cursor / others: copy the `mcpServers` snippet from https://superlog.sh/ → Connect.
 
-When all three are done (or skipped), close out with a single line directing the user to deploy their app — they're ready to ship.
+Close out with a single line directing the user to deploy their app once the browser flow shows "Congrats!" — they're ready to ship.
 
 ## Hard rules
 
