@@ -27,13 +27,15 @@ recordCounter(...);
 trackSuperlogEvent(...);
 ```
 
-Keep the endpoint and ingest key inline in one setup area near the top of the
-function. Do not read them from env — the ingest key is project-scoped +
-write-only and Edge runtimes are flaky about env propagation anyway.
+Keep endpoint/header configuration in one setup area near the top of the
+function. Use the source-level public Superlog configuration pattern from
+`otel-onboarding-style`; the public project token is write-only and belongs with
+the endpoint in the setup block.
 
 ```ts
 const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
-const SUPERLOG_KEY = "superlog_live_…"; // set by superlog-onboard skill on pairing
+const SUPERLOG_PUBLIC_TOKEN = "SL_PUBLIC_TOKEN";
+const OTEL_HEADERS = superlogHeaders(SUPERLOG_PUBLIC_TOKEN);
 ```
 
 ## Signals

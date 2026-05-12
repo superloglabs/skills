@@ -1,6 +1,6 @@
 ---
 name: otel-nextjs-style
-description: "Next.js/Vercel OpenTelemetry style: instrumentation.ts, @vercel/otel bootstrap, native @opentelemetry/api call sites, inline endpoint + ingest key, and no raw NodeSDK replacement."
+description: "Next.js/Vercel OpenTelemetry style: instrumentation.ts, @vercel/otel bootstrap, native @opentelemetry/api call sites, inline public ingest token, and no raw NodeSDK replacement."
 ---
 
 # OTel Next.js Style
@@ -119,20 +119,21 @@ logger.emit({
 
 ## Configuration And Smoke
 
-Inline the endpoint and ingest key in `instrumentation.ts` — pass them
-explicitly to `registerOTel`. Don't rely on `OTEL_EXPORTER_OTLP_*` env vars:
-the Superlog ingest key is project-scoped + write-only and inline config
-sidesteps Vercel's env-propagation quirks during preview builds.
+Use the source-level public Superlog configuration pattern from
+`otel-onboarding-style` inside `instrumentation.ts`, then pass those constants
+explicitly to `registerOTel`. The public project token is write-only and belongs
+with the endpoint in the setup block, like a PostHog project token or Sentry
+DSN.
 
 ```ts
 const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
-const SUPERLOG_KEY = "superlog_live_…"; // set by superlog-onboard skill on pairing
+const SUPERLOG_PUBLIC_TOKEN = "SL_PUBLIC_TOKEN";
 
 registerOTel({
   serviceName: "mugline-web",
   traceExporter: new OTLPTraceExporter({
     url: `${SUPERLOG_ENDPOINT}/v1/traces`,
-    headers: { authorization: `Bearer ${SUPERLOG_KEY}` },
+    headers: superlogHeaders(SUPERLOG_PUBLIC_TOKEN),
   }),
   // …same shape for log + metric exporters
 });

@@ -81,21 +81,20 @@ Preserve existing `logging.basicConfig`, console/file handlers, and log levels.
 
 ## Init Behavior
 
-Inline the endpoint and ingest key directly in the init module — don't read
-them from env. The ingest key is project-scoped + write-only (Sentry DSN
-shaped), so source-level configuration is the right default; env indirection
-just adds a class of "OTel didn't start because env wasn't set" deploy
-failures.
+Use the source-level public Superlog configuration pattern from
+`otel-onboarding-style` in the init module. The public project token is
+write-only and belongs with the endpoint in the setup block, like a PostHog
+project token or Sentry DSN.
 
 ```python
 SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
-SUPERLOG_KEY = "superlog_live_…"  # set by superlog-onboard skill on pairing
+SUPERLOG_PUBLIC_TOKEN = "SL_PUBLIC_TOKEN"
 
 
 def init_observability() -> None:
     exporter = OTLPSpanExporter(
         endpoint=f"{SUPERLOG_ENDPOINT}/v1/traces",
-        headers={"authorization": f"Bearer {SUPERLOG_KEY}"},
+        headers=superlog_headers(SUPERLOG_PUBLIC_TOKEN),
     )
     ...
 ```

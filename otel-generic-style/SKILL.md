@@ -116,10 +116,10 @@ Do not replace the project's structured logger with a bespoke one.
 
 ## Init behavior
 
-If the runtime needs OTLP auth headers, check `OTEL_EXPORTER_OTLP_HEADERS`
-during initialization. When it is absent, log one clear warning and return
-without installing exporters. Don't crash the app and don't silently emit
-unauthenticated telemetry.
+Use the source-level public Superlog configuration pattern from
+`otel-onboarding-style` in the telemetry init area. The public project token is
+write-only and belongs with the endpoint in one setup block, like a PostHog
+project token or Sentry DSN.
 
 If init can run more than once (test reloads, framework restarts, multiple
 entrypoints), guard provider/exporter setup so duplicate processors aren't
@@ -165,9 +165,9 @@ The wire format is stable, documented, and small.
 Rules for a hand-rolled OTLP emitter:
 
 - **Speak OTLP/HTTP+JSON, not a vendor format.** POST to
-  `${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces`, `/v1/metrics`, `/v1/logs` with
-  `Content-Type: application/json` and the `Authorization` header from
-  `OTEL_EXPORTER_OTLP_HEADERS`. Body shape follows the OTLP proto-to-JSON
+  `https://intake.superlog.sh/v1/traces`, `/v1/metrics`, `/v1/logs` with
+  `Content-Type: application/json` and headers derived from the public project
+  token. Body shape follows the OTLP proto-to-JSON
   mapping (`resourceSpans` / `resourceMetrics` / `resourceLogs` →
   `scopeSpans` → `spans`, with `traceId`/`spanId` as lowercase hex).
 - **Keep the shim tiny and OTel-shaped.** Expose names a future SDK port
@@ -187,10 +187,11 @@ Rules for a hand-rolled OTLP emitter:
   `service.version`, `deployment.environment.name`,
   `vcs.repository.url.full`, `vcs.ref.head.revision` once on the resource
   and reuse it on every export envelope.
-- **Honor the same env vars as the SDKs.** `OTEL_EXPORTER_OTLP_ENDPOINT`,
-  `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`,
-  `OTEL_RESOURCE_ATTRIBUTES`. If headers are missing, log one warning and
-  no-op — don't crash.
+- **Use the same public config as SDK-based services.** Keep the endpoint and
+  public project token in one setup block, and set resource attributes on every export
+  envelope. If the token is still the `SL_PUBLIC_TOKEN` placeholder, initialize
+  cleanly and tell the user which generated file needs the project token before
+  deploy.
 - **Trace context propagation uses W3C `traceparent`.** Read it from
   inbound HTTP headers if the runtime is a server; emit it on outbound
   requests as `traceparent: 00-<trace-id>-<span-id>-01`.
