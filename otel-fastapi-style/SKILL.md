@@ -20,9 +20,9 @@ def init_observability(app: FastAPI) -> bool:
 
 Keep `FastAPIInstrumentor.instrument_app(app)` with the rest of the
 observability setup so the bootstrap is easy to reason about. If the generated
-bootstrap still contains the `SL_PUBLIC_TOKEN` placeholder, it is still okay to
-instrument the app with no-op providers, but keep that choice explicit in
-`init_observability(app)`.
+token is not claimed yet because signup is still in progress, it is still okay
+to initialize providers; ingest may reject exports until the browser flow
+finishes.
 
 ## Entrypoint
 

@@ -61,13 +61,13 @@ like a PostHog project token or Sentry DSN.
 
 ```text
 SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
-SUPERLOG_PUBLIC_TOKEN = "sl_public_…"   # or "SL_PUBLIC_TOKEN" placeholder while pairing
+SUPERLOG_PUBLIC_TOKEN = "sl_public_…"
 ```
 
 Do not invent legacy names such as `SUPERLOG_API_KEY` or `SUPERLOG_INTAKE_URL`,
 even as placeholder text in docs or comments. While pairing is in flight, use
-the literal `SL_PUBLIC_TOKEN` placeholder and tell the user which generated
-bootstrap file to edit before deploying.
+the generated `sl_public_` token in source; ingest may reject it until the
+signup intent flow claims it for the user's project.
 
 Pass the inline values to the SDK explicitly via the exporter constructor's
 `endpoint` / `headers` options. Do not configure Superlog through implicit
