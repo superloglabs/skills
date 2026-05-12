@@ -152,7 +152,14 @@ If the user says signup is done, optionally re-run the telemetry smoke so the ge
 
 ### Deploy
 
-Tell the user to deploy as they normally would — push to their hosting platform, run their existing CI, or run locally. There are no env vars to wire and nothing platform-specific to configure: the endpoint and key are inline in the bootstrap, so events start flowing the moment the instrumented code runs.
+Drive the user into deployment now; don't stop at "deploy as you normally would." Infer the most likely deploy path from the repo and give one concrete next action.
+
+- If the repo has a direct deploy tool/config (`vercel.json`, `netlify.toml`, `fly.toml`, `wrangler.*`, `railway.json`, `render.yaml`, `Dockerfile`, deploy scripts in `package.json`, etc.), name the target and ask for confirmation before running any production/public deploy command: "I can deploy this now with `<command>` to `<target>`. Want me to run it?" If they say yes, run it and watch the result.
+- If deployment is CI-on-push/merge, say that clearly and give the exact next step the user needs: commit/push/merge the branch, or open the existing hosting dashboard. Respect the hard rule below: do not commit, push, or open PRs from this skill unless the user explicitly switches you into that task outside the skill run.
+- If you can't identify a production path, offer the best local substitute: start the dev server, hit an instrumented route, and tell the user the exact command you used plus what production deploy info you could not find.
+- After a deploy or local run, hit at least one instrumented route so traces/logs/metrics have a chance to flow. If signup is complete and ingest still does not return 2xx for all three signals, debug that before calling the install done.
+
+There are no env vars to wire and nothing platform-specific to configure: the endpoint and key are inline in the bootstrap, so events start flowing the moment the instrumented code runs with a claimed key.
 
 If the user asks "where do I put the key in production?" — the answer is "you already did, it's in the source you just deployed."
 
@@ -181,6 +188,7 @@ Close out with a single line directing the user to deploy their app once the bro
 
 - Never modify files outside the project root.
 - Never commit, push, or open PRs.
+- Never run a production/public deploy command without explicit user confirmation after showing the exact command and target.
 - Inline the ingest key in source. It's a project-scoped, write-only token (think Sentry DSN); env-var indirection just adds deploy-time failure modes for no gain.
 - Never remove an existing observability vendor unless the user asks for it.
 - Use the project's existing package manager and existing logger.

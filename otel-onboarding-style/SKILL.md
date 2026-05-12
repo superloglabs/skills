@@ -84,6 +84,22 @@ Include standard resource attributes when values are available:
 `service.name`, `service.version`, `deployment.environment.name`, and the VCS
 attributes below.
 
+## Environment tagging
+
+Tag every signal with the runtime environment when possible. Prefer setting
+`deployment.environment.name` once on the OTel resource so it propagates to
+traces, logs, and metrics. Infer it from existing platform env vars such as
+`NODE_ENV`, `VERCEL_ENV`, `RAILWAY_ENVIRONMENT_NAME`, `FLY_APP_NAME`/release
+metadata, `ENVIRONMENT`, `APP_ENV`, or `PYTHON_ENV`; normalize obvious values
+to low-cardinality names like `local`, `development`, `preview`, `staging`, and
+`production`.
+
+If a runtime/exporter path cannot attach resource attributes to all observables,
+add the same low-cardinality environment value to custom span attributes, log
+records, and metric data points manually. Do not create separate attribute names
+such as `env`, `environment`, or `app.environment` unless the repo already has a
+standard; use `deployment.environment.name` wherever the SDK allows it.
+
 ## VCS resource attributes
 
 Set `vcs.repository.url.full` on the OTel resource for every instrumented
