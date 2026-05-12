@@ -20,37 +20,42 @@ Before editing, read the applicable companion skills:
 - `otel-supabase-edge-style` for Supabase Edge Functions.
 - `otel-generic-style` for any other language (Go, Java/Kotlin, Ruby, Rust, .NET/C#, PHP, Elixir, plain Node, …) — use this as the fallback when none of the above match.
 
-## Step 0 — Endpoint and key handling
+## Step 0 — Endpoint and public token handling
 
-The **OTLP endpoint** is always `https://intake.superlog.sh` and **goes inline** in the bootstrap code — it's not a secret, no env-var indirection needed.
+The **OTLP endpoint** is always `https://intake.superlog.sh` and goes directly
+in the bootstrap source.
 
-The **ingest API key** starts with `superlog_live_` and is **project-scoped + write-only** — it can only ingest events into one project, can't read anything, can't change settings. Treat it like a Sentry DSN, a PostHog public key, or a Datadog RUM client token: **inline it directly in the OTel bootstrap source** alongside the endpoint. No `.env` files, no deploy-target wiring, no `process.env.OTEL_EXPORTER_OTLP_HEADERS`. The user deploys their code and events flow.
+The **Superlog public ingest token** starts with `sl_public_`. It is
+project-scoped, write-only, and intentionally safe to include in application
+source, including browser and mobile bundles. Treat it like a PostHog project
+token, Sentry DSN, or Datadog RUM client token: it can send telemetry to one
+project, but cannot read data, change settings, or access the Superlog account.
+
+Inline the public token as a constant next to the endpoint. Do not put it in
+`.env` files, deploy settings, or generated shell commands; source-level config
+is the intended onboarding path and avoids broken deploys from missing env vars.
+
+When an OTLP exporter requires headers, pass the public token through the
+exporter constructor. Prefer a neutral helper such as `superlogHeaders(token)`
+so the token only appears in one setup block.
 
 Two paths, no questions asked:
 
-### Key in the prompt
+### Public token in the prompt
 
-If the invoking prompt already contains a `superlog_live_…` key, validate the prefix and inline it in every bootstrap file you write. Done — move on to Step 1.
+If the invoking prompt contains an `sl_public_...` token, validate the prefix and
+inline it in every telemetry bootstrap file you write. Do not print the full
+token in chat; it will be visible in the code diff like any other public client
+token.
 
-### No key
+### No public token
 
-Generate the key locally, register a signup intent immediately, then keep working in parallel — don't block install on signup.
+Use the literal `SL_PUBLIC_TOKEN` placeholder in source and open
+`https://superlog.sh/` so the user can copy their public ingest token. Tell them
+to replace the placeholder in the generated bootstrap file before deploying.
 
-1. Generate a random plaintext ingest key with the shape `superlog_live_<base64url-ish random bytes>`. Use at least 32 bytes of entropy after the prefix. Keep the plaintext in memory so you can inline it in bootstrap files, but never print the full key back to chat.
-2. Compute `keyHash = sha256(plaintextKey)` as lowercase hex and `keyPrefix = "superlog_live_" + first 6 characters after the prefix`.
-3. `POST https://api.superlog.sh/api/signup-intents` with `Content-Type: application/json` and body:
-
-   ```json
-   {
-     "keyHash": "<sha256 hex>",
-     "keyPrefix": "superlog_live_abc123",
-     "returnTo": null
-   }
-   ```
-
-   If the agent runtime exposes a safe return/deep link back to the current conversation, pass it as `returnTo`; otherwise use `null`. Never put the plaintext key in this request.
-4. The response includes `id`, `signupUrl`, and `expiresAt`. Open `signupUrl` in the user's default browser (`open` / `xdg-open` / `start ""`). Print the URL too so they can copy it if the open command silently fails. Tell the user briefly: signup is open, GitHub/Slack happen there, and the key you generated will be registered to their project when they finish.
-5. While the user signs up, **do not block.** Keep going with Steps 1–4 using the generated plaintext key in the bootstrap source. Before signup finishes, ingest may reject that key; that is expected because the key is not claimed until the web flow completes.
+Keep working with the placeholder. The app should still build and initialize;
+telemetry export may be rejected until the placeholder is replaced.
 
 ## Step 1 — Map every app/service in the repo
 
@@ -77,7 +82,7 @@ Common log-bridge mistakes to actively check for:
 
 Bootstrap rules:
 - The bootstrap file must run before any framework imports. Use the language/framework's documented hook (`--import` flag, `instrumentation.ts`, top-of-`main.py` import, etc.).
-- Inline the endpoint (`https://intake.superlog.sh`) and the project's ingest key directly in the bootstrap source. Don't read from `process.env.OTEL_EXPORTER_OTLP_*` or write any `.env` files — the key is write-only, and inline configuration removes a whole class of "OTel didn't start because env vars weren't set" deploy failures. (See the framework-specific style skills for the exact shape per stack.)
+- Inline the endpoint (`https://intake.superlog.sh`) and public ingest token directly in the bootstrap source. Do not read from `process.env.OTEL_EXPORTER_OTLP_*` or write any `.env` files. (See the framework-specific style skills for the exact shape per stack.)
 - Use HTTP OTLP exporters, not gRPC. gRPC pulls in native bindings that break bundlers and complicate containers.
 - Use the project's existing package manager (detect via lockfile).
 - Prefer idempotent edits. If a config file already exists, edit don't overwrite.
@@ -85,7 +90,7 @@ Bootstrap rules:
 
 Framework rules:
 - **Next.js/Vercel:** use `instrumentation.ts` with `@vercel/otel` `registerOTel(...)` as the bootstrap. Do not substitute a raw `@opentelemetry/sdk-node` / `NodeSDK` bootstrap unless the repo already uses that architecture and you are extending it. Use `@opentelemetry/api` tracers/meters inside route handlers only where auto-instrumentation is blind. **`registerOTel` does not export logs by default** — pass `logRecordProcessor` (v1) / `logRecordProcessors` (v2) with an `OTLPLogExporter` from `@opentelemetry/exporter-logs-otlp-http`, or no logs will leave the process. Match the option name to the installed `@vercel/otel` major version.
-- **Expo/React Native:** preserve existing Expo Go / unsupported-runtime guards. In supported builds, call `initObservability()` before Sentry and before app registration/user code. Inline the endpoint + ingest key in the observability module — no `EXPO_PUBLIC_OTEL_*` env vars. The bootstrap reads them straight from constants.
+- **Expo/React Native:** preserve existing Expo Go / unsupported-runtime guards. In supported builds, call `initObservability()` before Sentry and before app registration/user code. Inline the endpoint + `sl_public_` token in the observability module; do not use `EXPO_PUBLIC_*` env vars for Superlog.
 - **Supabase Edge Functions:** native Deno OpenTelemetry does not work in hosted Supabase Edge today. Use the tiny OTel-shaped shim pattern above; keep exporter endpoint/headers in one setup area and avoid Superlog-specific function/file names.
 - **Python/FastAPI:** use native instrumentation such as `FastAPIInstrumentor.instrument_app(app)` rather than replacing request handling with manual middleware.
 - **Python/LiveKit:** lifecycle spans that cross shutdown callbacks may use `start_span` + `trace.use_span(..., end_on_exit=False)` and end in the shutdown callback. Bounded work should still use decorators or context managers.
@@ -142,7 +147,9 @@ A bootstrap that loads but never POSTs after signup is complete — or POSTs tra
 
 ## Step 5 — Hand-off (final message to the user)
 
-If you opened a signup intent in Step 0, do not poll for a key. The key is already in the source you wrote; the browser flow claims its hash, connects GitHub/Slack, and then tells the user to return to the agent and deploy.
+If you used `SL_PUBLIC_TOKEN`, tell the user exactly which bootstrap files
+contain that placeholder. Do not ask them to paste the replacement token into
+chat.
 
 If the user says signup is done, optionally re-run the telemetry smoke so the generated key can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that events will start flowing once the open browser flow shows "Congrats!".
 
@@ -159,9 +166,9 @@ Drive the user into deployment now; don't stop at "deploy as you normally would.
 - If you can't identify a production path, offer the best local substitute: start the dev server, hit an instrumented route, and tell the user the exact command you used plus what production deploy info you could not find.
 - After a deploy or local run, hit at least one instrumented route so traces/logs/metrics have a chance to flow. If signup is complete and ingest still does not return 2xx for all three signals, debug that before calling the install done.
 
-There are no env vars to wire and nothing platform-specific to configure: the endpoint and key are inline in the bootstrap, so events start flowing the moment the instrumented code runs with a claimed key.
-
-If the user asks "where do I put the key in production?" — the answer is "you already did, it's in the source you just deployed."
+There are no Superlog env vars to wire: the endpoint and public token are in the
+bootstrap source. If the placeholder is still present, tell the user to replace
+`SL_PUBLIC_TOKEN` in the named bootstrap files before deploying.
 
 ## Step 6 — MCP suggestion
 
@@ -189,7 +196,7 @@ Close out with a single line directing the user to deploy their app once the bro
 - Never modify files outside the project root.
 - Never commit, push, or open PRs.
 - Never run a production/public deploy command without explicit user confirmation after showing the exact command and target.
-- Inline the ingest key in source. It's a project-scoped, write-only token (think Sentry DSN); env-var indirection just adds deploy-time failure modes for no gain.
+- Inline only `sl_public_` public ingest tokens. Never inline account/session/admin tokens, private keys, or provider API keys. Do not print full tokens in chat.
 - Never remove an existing observability vendor unless the user asks for it.
 - Use the project's existing package manager and existing logger.
 - Prefer native OTel packages for the language; don't reinvent telemetry plumbing the SDK already provides.

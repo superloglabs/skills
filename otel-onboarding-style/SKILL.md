@@ -52,28 +52,27 @@ withTelemetry(...);
   `llm.generate_copy` or `llm.voice_response` is usually more useful than
   `llm.anthropic.messages.create`.
 
-## Endpoint and key
+## Endpoint and public token
 
-Inline the endpoint and the project's ingest key directly in the bootstrap
-source — don't read from `OTEL_EXPORTER_OTLP_*` env vars and don't write
-`.env` files. The Superlog ingest key is project-scoped + write-only (Sentry
-DSN shaped), so source-level configuration is the right default; env-var
-indirection only adds deploy-time failure modes.
+Inline the endpoint and the Superlog public ingest token directly in the
+bootstrap source. The token starts with `sl_public_`, is project-scoped and
+write-only, and is intended to be safe in browser/mobile/server source code
+like a PostHog project token or Sentry DSN.
 
 ```text
 SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
-SUPERLOG_KEY = "superlog_live_…"   # or "SUPERLOG_TEST" while pairing
+SUPERLOG_PUBLIC_TOKEN = "sl_public_…"   # or "SL_PUBLIC_TOKEN" placeholder while pairing
 ```
 
 Do not invent legacy names such as `SUPERLOG_API_KEY` or `SUPERLOG_INTAKE_URL`,
 even as placeholder text in docs or comments. While pairing is in flight, use
-the literal `SUPERLOG_TEST` sentinel — Superlog's ingest accepts it without
-forwarding events anywhere, so the bootstrap exercises the full code path
-before the real key arrives.
+the literal `SL_PUBLIC_TOKEN` placeholder and tell the user which generated
+bootstrap file to edit before deploying.
 
 Pass the inline values to the SDK explicitly via the exporter constructor's
-`endpoint` / `headers` options. Do not configure the SDK off implicit env-var
-reads.
+`endpoint` / `headers` options. Do not configure Superlog through implicit
+OTEL env-var reads; missing env vars are the main onboarding failure mode this
+skill avoids.
 
 If the repo can call telemetry init from multiple paths, guard provider/exporter
 setup so repeated imports, tests, reloads, or framework callbacks do not install
