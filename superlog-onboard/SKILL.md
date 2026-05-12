@@ -76,10 +76,10 @@ keep working in parallel — don't block install on signup.
    plaintext token in this request.
 4. The response includes `id`, `signupUrl`, and `expiresAt`. Open `signupUrl`
    in the user's default browser (`open "$signupUrl"` / `xdg-open "$signupUrl"`
-   / `start "" "%signupUrl%"`). Print the URL too so they can copy it if the
-   open command silently fails. Tell the user briefly: signup is open,
-   GitHub/Slack happen there, and the token you generated will be registered to
-   their project when they finish.
+   / `start "" "%signupUrl%"`). Also print the signup URL in chat and tell the
+   user they must go to that link to complete signup. Tell the user briefly:
+   signup is open, GitHub/Slack happen there, and the token you generated will
+   be registered to their project when they finish.
 5. While the user signs up, **do not block.** Keep going with Steps 1–4 using
    the generated plaintext token in the bootstrap source. Before signup
    finishes, ingest may reject that token; that is expected because the token is
@@ -179,7 +179,7 @@ If you generated a public token, it is already in the bootstrap source. Do not
 print it back to chat. If signup is not done yet, remind the user to finish the
 open browser flow so Superlog can claim that token for their project.
 
-If the user says signup is done, optionally re-run the telemetry smoke so the generated token can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that events will start flowing once the open browser flow shows "Congrats!".
+If the user says signup is done, optionally re-run the telemetry smoke so the generated token can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that they must go to the printed signup link and that events will start flowing once the open browser flow shows "Congrats!".
 
 ### What changed
 
