@@ -189,9 +189,8 @@ Rules for a hand-rolled OTLP emitter:
   and reuse it on every export envelope.
 - **Use the same public config as SDK-based services.** Keep the endpoint and
   public project token in one setup block, and set resource attributes on every export
-  envelope. If the token is still the `SL_PUBLIC_TOKEN` placeholder, initialize
-  cleanly and tell the user which generated file needs the project token before
-  deploy.
+  envelope. If signup is still in progress, initialize cleanly and note that
+  ingest may reject the generated token until the browser flow claims it.
 - **Trace context propagation uses W3C `traceparent`.** Read it from
   inbound HTTP headers if the runtime is a server; emit it on outbound
   requests as `traceparent: 00-<trace-id>-<span-id>-01`.

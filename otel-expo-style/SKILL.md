@@ -65,7 +65,7 @@ not depend on deploy-time configuration.
 
 ```ts
 const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
-const SUPERLOG_PUBLIC_TOKEN = "sl_public_…"; // or "SL_PUBLIC_TOKEN" placeholder while pairing
+const SUPERLOG_PUBLIC_TOKEN = "sl_public_...";
 const SERVICE_NAME = "mugline-mobile";
 
 const exporter = new OTLPTraceExporter({

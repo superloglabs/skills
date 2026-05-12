@@ -50,12 +50,44 @@ token.
 
 ### No public token
 
-Use the literal `SL_PUBLIC_TOKEN` placeholder in source and open
-`https://superlog.sh/` so the user can copy their public ingest token. Tell them
-to replace the placeholder in the generated bootstrap file before deploying.
+Generate a public token locally, register a signup intent immediately, then
+keep working in parallel — don't block install on signup.
 
-Keep working with the placeholder. The app should still build and initialize;
-telemetry export may be rejected until the placeholder is replaced.
+1. Generate a random plaintext public ingest token with the shape
+   `sl_public_<base64url-ish random bytes>`. Use at least 32 bytes of entropy
+   after the prefix. Keep the plaintext in memory so you can inline it in
+   bootstrap files, but never print the full token back to chat.
+2. Compute `keyHash = sha256(plaintextToken)` as lowercase hex and
+   `keyPrefix = the token prefix plus the first 6 token characters after the
+   prefix`.
+3. `POST https://api.superlog.sh/api/signup-intents` with
+   `Content-Type: application/json` and body:
+
+   ```json
+   {
+     "keyHash": "<sha256 hex>",
+     "keyPrefix": "<short public token prefix>",
+     "returnTo": null
+   }
+   ```
+
+   If the agent runtime exposes a safe return/deep link back to the current
+   conversation, pass it as `returnTo`; otherwise use `null`. Never put the
+   plaintext token in this request. If the API rejects the request with
+   `valid keyHash and keyPrefix required`, do not retry with alternate token
+   formats or block the install; keep the generated `sl_public_` token inline,
+   skip the browser signup step, and tell the user at hand-off that signup
+   intent registration failed so the token is not claimed yet.
+4. The response includes `id`, `signupUrl`, and `expiresAt`. Open `signupUrl`
+   in the user's default browser (`open "$signupUrl"` / `xdg-open "$signupUrl"`
+   / `start "" "%signupUrl%"`). Print the URL too so they can copy it if the
+   open command silently fails. Tell the user briefly: signup is open,
+   GitHub/Slack happen there, and the token you generated will be registered to
+   their project when they finish.
+5. While the user signs up, **do not block.** Keep going with Steps 1–4 using
+   the generated plaintext token in the bootstrap source. Before signup
+   finishes, ingest may reject that token; that is expected because the token is
+   not claimed until the web flow completes.
 
 ## Step 1 — Map every app/service in the repo
 
@@ -141,17 +173,17 @@ Get the meter once at module level, create instruments at module level, incremen
 Per service:
 
 1. **Run the project's own dev or build command** (whatever its `package.json` / `pyproject` / `Makefile` already wires up). Confirm it starts cleanly with no errors that trace back to your OTel install. Also run a telemetry bootstrap smoke that imports or starts the app, so provider setup, exporter construction, log bridging, and framework instrumentation all initialize. For a Python server this can be an import/startup command such as `uv run python -c 'from app.main import app; print(app.title)'`; for Node/Next use the repo's build/start path. For a server, hit at least one route with curl so traffic flows through the instrumentation; choose a route that exercises an instrumented operation when practical, not only a static health route. For a CLI, invoke a real command. **Don't ship if the app's own startup is now broken** — that's a regression.
-2. **Confirm telemetry leaves the process — for all three signals.** After the browser signup flow finishes, OTLP POSTs from the dev server should return 2xx for **each** of `/v1/traces`, `/v1/logs`, and `/v1/metrics` — that proves the full bootstrap is reaching the network, not just the trace pipeline. The signal is the running app's own POSTs to all three paths succeeding by the time the dev server shuts down. To force the logs path specifically, hit a route (or invoke a CLI command) that you know calls the project's logger inside an instrumented operation, then watch the dev server's outbound traffic / debug exporter output for a `/v1/logs` POST. If signup is still in progress, a 401/403 from ingest is expected because the generated key has not been claimed yet; in that case verify the bootstrap initializes cleanly and ask the user to finish the open signup tab before treating outbound ingest as failed. If only `/v1/traces` shows up after signup, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor).
+2. **Confirm telemetry leaves the process — for all three signals.** After the browser signup flow finishes, OTLP POSTs from the dev server should return 2xx for **each** of `/v1/traces`, `/v1/logs`, and `/v1/metrics` — that proves the full bootstrap is reaching the network, not just the trace pipeline. The signal is the running app's own POSTs to all three paths succeeding by the time the dev server shuts down. To force the logs path specifically, hit a route (or invoke a CLI command) that you know calls the project's logger inside an instrumented operation, then watch the dev server's outbound traffic / debug exporter output for a `/v1/logs` POST. If signup is still in progress, a 401/403 from ingest is expected because the generated token has not been claimed yet; in that case verify the bootstrap initializes cleanly and ask the user to finish the open signup tab before treating outbound ingest as failed. If only `/v1/traces` shows up after signup, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor).
 
 A bootstrap that loads but never POSTs after signup is complete — or POSTs traces but no logs/metrics — is not a partial success. Fix it before moving on.
 
 ## Step 5 — Hand-off (final message to the user)
 
-If you used `SL_PUBLIC_TOKEN`, tell the user exactly which bootstrap files
-contain that placeholder. Do not ask them to paste the replacement token into
-chat.
+If you generated a public token, it is already in the bootstrap source. Do not
+print it back to chat. If signup is not done yet, remind the user to finish the
+open browser flow so Superlog can claim that token for their project.
 
-If the user says signup is done, optionally re-run the telemetry smoke so the generated key can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that events will start flowing once the open browser flow shows "Congrats!".
+If the user says signup is done, optionally re-run the telemetry smoke so the generated token can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that events will start flowing once the open browser flow shows "Congrats!".
 
 ### What changed
 
@@ -167,8 +199,8 @@ Drive the user into deployment now; don't stop at "deploy as you normally would.
 - After a deploy or local run, hit at least one instrumented route so traces/logs/metrics have a chance to flow. If signup is complete and ingest still does not return 2xx for all three signals, debug that before calling the install done.
 
 There are no Superlog env vars to wire: the endpoint and public token are in the
-bootstrap source. If the placeholder is still present, tell the user to replace
-`SL_PUBLIC_TOKEN` in the named bootstrap files before deploying.
+bootstrap source. If signup is still in progress, tell the user to finish the
+open browser flow before expecting deployed telemetry to be accepted.
 
 ## Step 6 — MCP suggestion
 
