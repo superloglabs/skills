@@ -51,8 +51,9 @@ token.
 ### No public token
 
 Use the literal `SL_PUBLIC_TOKEN` placeholder in source and open
-`https://superlog.sh/` so the user can copy their public ingest token. Tell them
-to replace the placeholder in the generated bootstrap file before deploying.
+`https://superlog.sh/` so the user can copy their public ingest token. Also
+print the signup link in chat and tell the user they must go to that link to
+complete signup and claim the generated key.
 
 Keep working with the placeholder. The app should still build and initialize;
 telemetry export may be rejected until the placeholder is replaced.
@@ -151,7 +152,7 @@ If you used `SL_PUBLIC_TOKEN`, tell the user exactly which bootstrap files
 contain that placeholder. Do not ask them to paste the replacement token into
 chat.
 
-If the user says signup is done, optionally re-run the telemetry smoke so the generated key can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that events will start flowing once the open browser flow shows "Congrats!".
+If the user says signup is done, optionally re-run the telemetry smoke so the generated key can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that they must go to the printed signup link and that events will start flowing once the open browser flow shows "Congrats!".
 
 ### What changed
 
