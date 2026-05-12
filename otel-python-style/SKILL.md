@@ -88,7 +88,7 @@ project token or Sentry DSN.
 
 ```python
 SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
-SUPERLOG_PUBLIC_TOKEN = "SL_PUBLIC_TOKEN"
+SUPERLOG_PUBLIC_TOKEN = "sl_public_..."
 
 
 def init_observability() -> None:

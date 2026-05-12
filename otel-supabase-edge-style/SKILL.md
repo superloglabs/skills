@@ -34,7 +34,7 @@ the endpoint in the setup block.
 
 ```ts
 const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
-const SUPERLOG_PUBLIC_TOKEN = "SL_PUBLIC_TOKEN";
+const SUPERLOG_PUBLIC_TOKEN = "sl_public_...";
 const OTEL_HEADERS = superlogHeaders(SUPERLOG_PUBLIC_TOKEN);
 ```
 
