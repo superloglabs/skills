@@ -125,12 +125,63 @@ like `git.repo` or `app.repo_url`.
 
 ## Signals
 
-- Traces: all critical operations have spans with relevant attributes.
+The baseline goal for every instrumented service is RED per software component:
+operation count, error count, and operation duration. Two things must hold:
+
+- `service.name` is set on every signal, so RED can be rolled up per service.
+- Each distinct unit of work produces its own span/metric series with a
+  low-cardinality operation identifier — an HTTP route template, a queue
+  handler name, a scheduled job name, an RPC method, etc. RED must be
+  answerable per operation, not just per service.
+
+If a service ships without something that produces those three numbers per
+operation for its main work (inbound HTTP requests, queue handlers, scheduled
+jobs, background loops, etc.), the onboarding is incomplete.
+
+- Traces: all critical operations have spans with relevant attributes. Every
+  service has at least one span per inbound unit of work — usually from HTTP /
+  framework auto-instrumentation, otherwise a manually wired `withSpan` (or
+  language equivalent) around the request/handler entry point.
 - Logs: structured, concise, OTLP-forwarded, and trace/span-correlated.
 - Metrics: critical operations have low-cardinality counters/histograms.
 - Tenant/org/project information is included where available.
 - Do not put raw user ids or request ids in metric tags unless the repo already
   treats them as bounded tenant-like ids.
+
+## HTTP and framework instrumentation
+
+For each service, install the standard OpenTelemetry HTTP/server
+instrumentation for its language and framework (e.g.
+`@opentelemetry/instrumentation-http` plus the framework package in Node,
+`opentelemetry-instrumentation-fastapi` / `-django` / `-flask` in Python, etc.)
+and add it to `package.json` / `pyproject.toml` if missing. This is what
+populates `http.server.request.duration`, `http.request.method`, and
+`http.response.status_code` and makes RED work without per-route code.
+
+If the service's framework or runtime has no auto-instrumentation available
+(custom server, exotic runtime, RPC over a non-HTTP transport, background
+worker loop), wire spans manually at the entry point so every unit of work
+produces one span with `http.*` or operation-appropriate attributes and a
+status. Do not skip this step on the grounds that the service "only has
+business spans" — those don't give you per-service RED.
+
+## Errors
+
+Every span that represents a unit of work must signal failure consistently so
+error counts are derivable:
+
+- On a caught exception, call `span.recordException(err)` and
+  `span.setStatus({ code: SpanStatusCode.ERROR, message })` (or the language
+  equivalent). Auto-instrumentation usually does this for HTTP 5xx; you still
+  need it for handled errors and for manually wired spans.
+- Set an `outcome` attribute of `"success"` or `"error"` on business spans
+  and matching metric data points, so a single low-cardinality dimension
+  splits RED into success vs. error without joining on status code.
+- For known error classes, also set `error.type` to a short, low-cardinality
+  string (e.g. `"timeout"`, `"validation"`, `"upstream_5xx"`). Do not use the
+  exception message — it's unbounded.
+- Do not swallow exceptions silently inside a `withSpan` callback; rethrow
+  after recording so the surrounding span and caller see the failure.
 
 ## LLM Metrics
 
