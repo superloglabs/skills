@@ -76,14 +76,14 @@ keep working in parallel — don't block install on signup.
    plaintext token in this request.
 4. The response includes `id`, `signupUrl`, and `expiresAt`. Open `signupUrl`
    in the user's default browser (`open "$signupUrl"` / `xdg-open "$signupUrl"`
-   / `start "" "%signupUrl%"`). Also print the signup URL in chat and tell the
-   user they must go to that link to complete signup. Tell the user briefly:
-   signup is open, GitHub/Slack happen there, and the token you generated will
-   be registered to their project when they finish.
-5. While the user signs up, **do not block.** Keep going with Steps 1–4 using
-   the generated plaintext token in the bootstrap source. Before signup
-   finishes, ingest may reject that token; that is expected because the token is
-   not claimed until the web flow completes.
+   / `start "" "%signupUrl%"`) and print the URL in chat. Mention briefly that
+   the signup tab is open (GitHub/Slack integrations happen there) and that the
+   install will check ingest at the end — no need to interrupt their current
+   flow.
+5. **Do not block on signup.** Keep going with Steps 1–4 using the generated
+   plaintext token in the bootstrap source. Step 4 is the gate: it sends real
+   telemetry and uses the response code to decide whether the user still needs
+   to finish signup.
 
 ## Step 1 — Map every app/service in the repo
 
@@ -169,17 +169,17 @@ Get the meter once at module level, create instruments at module level, incremen
 Per service:
 
 1. **Run the project's own dev or build command** (whatever its `package.json` / `pyproject` / `Makefile` already wires up). Confirm it starts cleanly with no errors that trace back to your OTel install. Also run a telemetry bootstrap smoke that imports or starts the app, so provider setup, exporter construction, log bridging, and framework instrumentation all initialize. For a Python server this can be an import/startup command such as `uv run python -c 'from app.main import app; print(app.title)'`; for Node/Next use the repo's build/start path. For a server, hit at least one route with curl so traffic flows through the instrumentation; choose a route that exercises an instrumented operation when practical, not only a static health route. For a CLI, invoke a real command. **Don't ship if the app's own startup is now broken** — that's a regression.
-2. **Confirm telemetry leaves the process — for all three signals.** After the browser signup flow finishes, OTLP POSTs from the dev server should return 2xx for **each** of `/v1/traces`, `/v1/logs`, and `/v1/metrics` — that proves the full bootstrap is reaching the network, not just the trace pipeline. The signal is the running app's own POSTs to all three paths succeeding by the time the dev server shuts down. To force the logs path specifically, hit a route (or invoke a CLI command) that you know calls the project's logger inside an instrumented operation, then watch the dev server's outbound traffic / debug exporter output for a `/v1/logs` POST. If signup is still in progress, a 401/403 from ingest is expected because the generated token has not been claimed yet; in that case verify the bootstrap initializes cleanly and ask the user to finish the open signup tab before treating outbound ingest as failed. If only `/v1/traces` shows up after signup, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor).
+2. **Push real telemetry through prod and read the response code — for all three signals.** This is a hard gate. Drive the running app so it actually emits at least one span, one log, and one metric, then watch the OTLP exporter's HTTP responses for `/v1/traces`, `/v1/logs`, and `/v1/metrics`. To force the logs path specifically, hit a route (or invoke a CLI command) that calls the project's logger inside an instrumented operation. The response status from ingest is the signal:
 
-A bootstrap that loads but never POSTs after signup is complete — or POSTs traces but no logs/metrics — is not a partial success. Fix it before moving on.
+   - **All three return 2xx → done.** Signup is already claimed; move on to Step 5. Do not nudge the user back to the signup tab.
+   - **Any return 401/403 → token isn't claimed yet.** Tell the user to finish signup at the URL from Step 0 (the tab is already open). Wait for them to confirm, then re-run the smoke and re-check until you see 2xx on all three. Don't declare success on a 401/403.
+   - **Any return 5xx, time out, or never POST → real bug.** Debug it before moving on. If only `/v1/traces` shows up, the log bridge isn't wired (most common causes: `LoggerProvider` never set, handler attached to the wrong logger, level filter too strict, `@vercel/otel` missing `logRecordProcessor(s)`, or shutdown not flushing the batch processor). If `/v1/metrics` is missing, the meter provider or periodic reader isn't wired.
+
+A bootstrap that loads but never POSTs — or POSTs traces but no logs/metrics — is not a partial success. Fix it before moving on.
 
 ## Step 5 — Hand-off (final message to the user)
 
-If you generated a public token, it is already in the bootstrap source. Do not
-print it back to chat. If signup is not done yet, remind the user to finish the
-open browser flow so Superlog can claim that token for their project.
-
-If the user says signup is done, optionally re-run the telemetry smoke so the generated token can produce 2xx ingest responses. If the user has not finished signup yet, close with a clear reminder that they must go to the printed signup link and that events will start flowing once the open browser flow shows "Congrats!".
+You only reach this step if Step 4 saw 2xx from `/v1/traces`, `/v1/logs`, and `/v1/metrics`. The token is already inlined in the bootstrap source — do not print it back to chat. Telemetry is flowing into the user's project; the next thing they need is a deploy.
 
 ### What changed
 
@@ -192,11 +192,10 @@ Drive the user into deployment now; don't stop at "deploy as you normally would.
 - If the repo has a direct deploy tool/config (`vercel.json`, `netlify.toml`, `fly.toml`, `wrangler.*`, `railway.json`, `render.yaml`, `Dockerfile`, deploy scripts in `package.json`, etc.), name the target and ask for confirmation before running any production/public deploy command: "I can deploy this now with `<command>` to `<target>`. Want me to run it?" If they say yes, run it and watch the result.
 - If deployment is CI-on-push/merge, say that clearly and give the exact next step the user needs: commit/push/merge the branch, or open the existing hosting dashboard. Respect the hard rule below: do not commit, push, or open PRs from this skill unless the user explicitly switches you into that task outside the skill run.
 - If you can't identify a production path, offer the best local substitute: start the dev server, hit an instrumented route, and tell the user the exact command you used plus what production deploy info you could not find.
-- After a deploy or local run, hit at least one instrumented route so traces/logs/metrics have a chance to flow. If signup is complete and ingest still does not return 2xx for all three signals, debug that before calling the install done.
+- After a deploy or local run, hit at least one instrumented route so traces/logs/metrics flow from the deployed environment too.
 
 There are no Superlog env vars to wire: the endpoint and public token are in the
-bootstrap source. If signup is still in progress, tell the user to finish the
-open browser flow before expecting deployed telemetry to be accepted.
+bootstrap source.
 
 ## Step 6 — MCP suggestion
 
@@ -217,7 +216,7 @@ For other agents the user might also use, mention but do *not* run:
 - Codex: `codex mcp add superlog --url https://api.superlog.sh/mcp && codex mcp login superlog`
 - Cursor / others: copy the `mcpServers` snippet from https://superlog.sh/ → Connect.
 
-Close out with a single line directing the user to deploy their app once the browser flow shows "Congrats!" — they're ready to ship.
+Close out with a single line directing the user to deploy their app — they're ready to ship.
 
 ## Hard rules
 
