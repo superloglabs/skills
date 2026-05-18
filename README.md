@@ -24,6 +24,7 @@ npx skills add superloglabs/skills --skill superlog-onboard
 - `otel-generic-style` - fallback style guidance for languages without a dedicated skill (Go, Java, Ruby, Rust, .NET, PHP, Elixir, plain Node, etc.).
 - `otel-python-style` - Python OpenTelemetry style guidance.
 - `otel-fastapi-style` - FastAPI instrumentation guidance.
+- `otel-flask-style` - Flask instrumentation guidance.
 - `otel-nextjs-style` - Next.js and Vercel OpenTelemetry guidance.
 - `otel-livekit-style` - LiveKit Agents lifecycle, metrics, and LLM telemetry guidance.
 - `otel-expo-style` - Expo and React Native OpenTelemetry guidance.
