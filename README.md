@@ -20,6 +20,7 @@ npx skills add superloglabs/skills --skill superlog-onboard
 
 - `superlog-onboard` - install Superlog observability across every runnable app and service in a repo.
 - `otel-instrument-feature` - instrument a single new feature, endpoint, handler, or job with OTel spans, metrics, and logs as it's being written.
+- `superlog-debug` - pull production telemetry through the Superlog MCP to debug incidents, regressions, and "how is this behaving in prod right now?" questions.
 - `otel-onboarding-style` - general OpenTelemetry style guidance.
 - `otel-generic-style` - fallback style guidance for languages without a dedicated skill (Go, Java, Ruby, Rust, .NET, PHP, Elixir, plain Node, etc.).
 - `otel-python-style` - Python OpenTelemetry style guidance.
