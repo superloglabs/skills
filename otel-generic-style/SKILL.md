@@ -166,8 +166,11 @@ Rules for a hand-rolled OTLP emitter:
 
 - **Speak OTLP/HTTP+JSON, not a vendor format.** POST to
   `https://intake.superlog.sh/v1/traces`, `/v1/metrics`, `/v1/logs` with
-  `Content-Type: application/json` and headers derived from the public project
-  token. Body shape follows the OTLP proto-to-JSON
+  `Content-Type: application/json` and the public project token in the
+  **`x-api-key`** header (`x-api-key: sl_public_...`). Ingest reads only
+  `x-api-key` or `Authorization: Bearer <token>` (literal `Bearer ` prefix) —
+  any other header name 401s on every request even when the token is valid. Body
+  shape follows the OTLP proto-to-JSON
   mapping (`resourceSpans` / `resourceMetrics` / `resourceLogs` →
   `scopeSpans` → `spans`, with `traceId`/`spanId` as lowercase hex).
 - **Keep the shim tiny and OTel-shaped.** Expose names a future SDK port

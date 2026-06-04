@@ -154,6 +154,16 @@ The Superlog MCP only sees what the user's apps export as OpenTelemetry. It does
 
 If the MCP returns nothing for a service, **don't conclude the service is silent** — first check whether telemetry is reaching ingest at all. A missing/misconfigured exporter, a wrong `service.name`, or a project-mismatched ingest key all show up as "MCP sees nothing" even when the service is alive and noisy at the host level. The `superlog-onboard` skill covers the install side if the user needs to fix that.
 
+One specific failure to rule out first: **every ingest request is 401-ing even though the token is valid.** The token is sent under the wrong header name. Ingest reads the token only from `x-api-key: <token>` or `Authorization: Bearer <token>` (literal `Bearer ` prefix required); anything else — `api-key`, `x-superlog-token`, or `Authorization: <token>` without `Bearer ` — returns 401 on every request, so the install looks broken when the key is actually fine. A quick way to confirm the key works independently of the app's exporter config:
+
+```bash
+curl -i -X POST https://intake.superlog.sh/v1/traces \
+  -H "x-api-key: sl_public_..." \
+  -H "content-type: application/json" --data '{"resourceSpans":[]}'
+# 2xx → key is valid; the app is sending the wrong header. Fix the exporter to use x-api-key.
+# 401 → the token itself is wrong/revoked.
+```
+
 ## Hard rules
 
 - **Read-only by default.** `query_*` and `list_*` calls are safe. `create_alert`, `update_dashboard`, `delete_*`, etc. mutate the user's account — never invoke those without an explicit ask, and even then confirm the exact change first.

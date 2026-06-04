@@ -91,6 +91,12 @@ SUPERLOG_ENDPOINT = "https://intake.superlog.sh"
 SUPERLOG_PUBLIC_TOKEN = "sl_public_..."
 
 
+# The token MUST be sent as the `x-api-key` header. Ingest only reads
+# `x-api-key` or `Authorization: Bearer <token>`; any other header name 401s.
+def superlog_headers(token: str) -> dict[str, str]:
+    return {"x-api-key": token}
+
+
 def init_observability() -> None:
     exporter = OTLPSpanExporter(
         endpoint=f"{SUPERLOG_ENDPOINT}/v1/traces",

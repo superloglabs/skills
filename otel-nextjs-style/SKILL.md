@@ -129,6 +129,12 @@ DSN.
 const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
 const SUPERLOG_PUBLIC_TOKEN = "sl_public_...";
 
+// The token MUST be sent as the `x-api-key` header. Ingest only reads
+// `x-api-key` or `Authorization: Bearer <token>`; any other header name 401s.
+function superlogHeaders(token: string): Record<string, string> {
+  return { "x-api-key": token };
+}
+
 registerOTel({
   serviceName: "mugline-web",
   traceExporter: new OTLPTraceExporter({

@@ -74,6 +74,23 @@ Pass the inline values to the SDK explicitly via the exporter constructor's
 OTEL env-var reads; missing env vars are the main onboarding failure mode this
 skill avoids.
 
+The token goes in the **`x-api-key`** header. Ingest accepts only
+`x-api-key: <token>` or `Authorization: Bearer <token>` (literal `Bearer `
+prefix required) — prefer `x-api-key`. Any other header name returns 401 on
+every request even though the token is valid, which is the second most common
+onboarding failure after missing env vars. Define a one-line helper so the
+header name lives in one place:
+
+```ts
+function superlogHeaders(token: string): Record<string, string> {
+  return { "x-api-key": token };
+}
+```
+```python
+def superlog_headers(token: str) -> dict[str, str]:
+    return {"x-api-key": token}
+```
+
 If the repo can call telemetry init from multiple paths, guard provider/exporter
 setup so repeated imports, tests, reloads, or framework callbacks do not install
 duplicate processors or log handlers. For a single-entrypoint app that starts
