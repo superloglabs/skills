@@ -36,8 +36,28 @@ Inline the public token as a constant next to the endpoint. Do not put it in
 is the intended onboarding path and avoids broken deploys from missing env vars.
 
 When an OTLP exporter requires headers, pass the public token through the
-exporter constructor. Prefer a neutral helper such as `superlogHeaders(token)`
-so the token only appears in one setup block.
+exporter constructor as the **`x-api-key`** header. This is the single most
+common onboarding failure: the token is valid, but the exporter sends it under
+the wrong header name (or no header), so ingest returns 401 on every request and
+the install looks broken when the key is fine. Ingest reads the token from
+exactly two places — `x-api-key: <token>`, or `Authorization: Bearer <token>`
+(the literal `Bearer ` prefix is required). Use `x-api-key`; it avoids the
+`Bearer `-prefix footgun and survives proxies/SDKs that strip `Authorization`.
+Do **not** invent other header names (`api-key`, `x-superlog-token`,
+`Authorization: <token>` without `Bearer `) — all of them 401.
+
+Wrap it in a one-line helper so the header name lives in exactly one place, and
+**define the helper** — never call an undefined `superlogHeaders`:
+
+```ts
+function superlogHeaders(token: string): Record<string, string> {
+  return { "x-api-key": token };
+}
+```
+```python
+def superlog_headers(token: str) -> dict[str, str]:
+    return {"x-api-key": token}
+```
 
 Two paths, no questions asked:
 

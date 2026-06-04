@@ -68,6 +68,12 @@ const SUPERLOG_ENDPOINT = "https://intake.superlog.sh";
 const SUPERLOG_PUBLIC_TOKEN = "sl_public_...";
 const SERVICE_NAME = "mugline-mobile";
 
+// The token MUST be sent as the `x-api-key` header. Ingest only reads
+// `x-api-key` or `Authorization: Bearer <token>`; any other header name 401s.
+function superlogHeaders(token: string): Record<string, string> {
+  return { "x-api-key": token };
+}
+
 const exporter = new OTLPTraceExporter({
   url: `${SUPERLOG_ENDPOINT}/v1/traces`,
   headers: superlogHeaders(SUPERLOG_PUBLIC_TOKEN),
