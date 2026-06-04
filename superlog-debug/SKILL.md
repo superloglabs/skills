@@ -160,7 +160,7 @@ One specific failure to rule out first: **every ingest request is 401-ing even t
 curl -i -X POST https://intake.superlog.sh/v1/traces \
   -H "x-api-key: sl_public_..." \
   -H "content-type: application/json" --data '{"resourceSpans":[]}'
-# 200 → key is valid; the app is sending the wrong header. Fix the exporter to use x-api-key.
+# 2xx → key is valid; the app is sending the wrong header. Fix the exporter to use x-api-key.
 # 401 → the token itself is wrong/revoked.
 ```
 
