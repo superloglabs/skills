@@ -19,12 +19,13 @@ If a bootstrap exists, read the applicable companion skill before writing code:
 
 - `otel-onboarding-style` — general OTel taste and attribute conventions.
 - `otel-python-style` — Python.
+- `otel-dotnet-style` — .NET / C# (ASP.NET Core, Worker Services).
 - `otel-fastapi-style` — FastAPI.
 - `otel-livekit-style` — LiveKit agents.
 - `otel-nextjs-style` — Next.js / Vercel.
 - `otel-expo-style` — Expo / React Native.
 - `otel-supabase-edge-style` — Supabase Edge Functions.
-- `otel-generic-style` — anything else (Go, Java, Ruby, Rust, .NET, PHP, Elixir, plain Node, …).
+- `otel-generic-style` — anything else (Go, Java, Ruby, Rust, PHP, Elixir, plain Node, …).
 
 Match the local convention. If the file you are editing already uses `withSpan` from `@superlog/otel-helpers`, keep using it; if it uses `tracer.startActiveSpan` directly, keep using that. Do not introduce a second style alongside the existing one.
 

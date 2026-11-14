@@ -1,18 +1,18 @@
 ---
 name: otel-generic-style
-description: "Generic OpenTelemetry style fallback for languages without a dedicated otel-*-style skill (Go, Java/Kotlin, Ruby, Rust, .NET/C#, PHP, Elixir, plain Node, etc.). Native SDK APIs, module-scope tracers/meters, bounded spans, error recording, OTLP logs, and resource attributes."
+description: "Generic OpenTelemetry style fallback for languages without a dedicated otel-*-style skill (Go, Java/Kotlin, Ruby, Rust, PHP, Elixir, plain Node, etc.). Native SDK APIs, module-scope tracers/meters, bounded spans, error recording, OTLP logs, and resource attributes."
 ---
 
 # Generic OTel Style
 
 Use this skill for any language that does not have its own `otel-*-style`
-companion (Go, Java/Kotlin, Ruby, Rust, .NET/C#, PHP, Elixir, plain
+companion (Go, Java/Kotlin, Ruby, Rust, PHP, Elixir, plain
 Node/TypeScript without Next.js or Expo, etc.). Read `otel-onboarding-style`
 first for the cross-language rules; this skill is the language-agnostic
 translation of that guidance.
 
 If a language-specific skill exists for the runtime in front of you
-(`otel-python-style`, `otel-fastapi-style`, `otel-livekit-style`,
+(`otel-python-style`, `otel-dotnet-style`, `otel-fastapi-style`, `otel-livekit-style`,
 `otel-nextjs-style`, `otel-expo-style`, `otel-supabase-edge-style`), prefer
 that one — it overrides this skill.
 
