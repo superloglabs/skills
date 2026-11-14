@@ -29,8 +29,9 @@ when the project already uses that data layer. Do not add the console exporter.
 ## Bootstrap
 
 Keep all setup in one provider-neutral file (`Observability.cs`) and call it
-once from `Program.cs`. The DI container guarantees single registration, so no
-init guard is needed.
+from exactly one place in `Program.cs`. Each call adds another set of exporters,
+so a second call makes every signal export twice. If the repo has several
+entrypoints that share startup code, make sure only one path reaches it.
 
 ```csharp
 using System.Diagnostics;
@@ -53,16 +54,20 @@ public static class Observability
 
     public static IHostApplicationBuilder AddObservability(this IHostApplicationBuilder builder)
     {
+        var attributes = new Dictionary<string, object>
+        {
+            ["deployment.environment.name"] = builder.Environment.EnvironmentName.ToLowerInvariant(),
+            ["vcs.repository.url.full"] = "https://github.com/acme/mugline",
+        };
+        // Best effort: leave the attribute off rather than report a placeholder revision.
+        var revision = Environment.GetEnvironmentVariable("GITHUB_SHA")
+            ?? Environment.GetEnvironmentVariable("SOURCE_COMMIT");
+        if (!string.IsNullOrEmpty(revision)) attributes["vcs.ref.head.revision"] = revision;
+
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource
                 .AddService(ServiceName, serviceVersion: typeof(Observability).Assembly.GetName().Version?.ToString())
-                .AddAttributes(new Dictionary<string, object>
-                {
-                    ["deployment.environment.name"] = builder.Environment.EnvironmentName.ToLowerInvariant(),
-                    ["vcs.repository.url.full"] = "https://github.com/acme/mugline",
-                    ["vcs.ref.head.revision"] = Environment.GetEnvironmentVariable("GITHUB_SHA")
-                        ?? Environment.GetEnvironmentVariable("SOURCE_COMMIT") ?? "unknown",
-                }))
+                .AddAttributes(attributes))
             .WithTracing(tracing => tracing
                 .AddSource(ServiceName)
                 .AddAspNetCoreInstrumentation()
@@ -192,6 +197,10 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         try
         {
             await handler.HandleAsync(message, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw; // host shutdown, not a failure: do not record it or keep looping
         }
         catch (Exception ex)
         {
