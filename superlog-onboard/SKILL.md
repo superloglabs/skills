@@ -13,12 +13,13 @@ Before editing, read the applicable companion skills:
 
 - `otel-onboarding-style` for general OTel taste.
 - `otel-python-style` for Python services.
+- `otel-dotnet-style` for .NET / C# services (ASP.NET Core, Worker Services).
 - `otel-fastapi-style` for FastAPI services.
 - `otel-livekit-style` for LiveKit agents.
 - `otel-nextjs-style` for Next.js/Vercel apps.
 - `otel-expo-style` for Expo / React Native apps.
 - `otel-supabase-edge-style` for Supabase Edge Functions.
-- `otel-generic-style` for any other language (Go, Java/Kotlin, Ruby, Rust, .NET/C#, PHP, Elixir, plain Node, …) — use this as the fallback when none of the above match.
+- `otel-generic-style` for any other language (Go, Java/Kotlin, Ruby, Rust, PHP, Elixir, plain Node, …) — use this as the fallback when none of the above match.
 
 ## Step 0 — Endpoint and public token handling
 
